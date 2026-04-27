@@ -4,7 +4,6 @@ import {
   MessagePrimitive,
   useAuiState,
 } from "@assistant-ui/react";
-
 import {
   ActionProvider,
   type DataPart,
@@ -16,13 +15,6 @@ import {
 } from "@json-render/react";
 import { MarkdownText } from "@/components/assistant-ui/markdown-text";
 import { ToolFallback } from "@/components/assistant-ui/tool-fallback";
-import { LightragUiRetrievalTool } from "@/components/lightrag-ui-retrieval-tool";
-import { SqlQueryMakerTool, SqlExecutionRegistrar } from "@/components/sql-tool";
-import {
-  ReasoningRoot,
-  ReasoningTrigger,
-  ReasoningContent,
-} from "@/components/assistant-ui/reasoning";
 import { getAgentForTool } from "@/lib/tool-agent-map";
 import type { ToolCallMessagePartComponent } from "@assistant-ui/react";
 import {
@@ -31,27 +23,30 @@ import {
   MessageError,
   Shadcn,
 } from "@/components/assistant-ui/shadcn";
+import {
+  AnswerFromContextUI,
+  CalculatorUI,
+  ClarificationRequestUI,
+  ComposeResponseUI,
+  ExecuteSqlUI,
+  ExecuteSystemActionUI,
+  GenerateActionUI,
+  GenerateSqlUI,
+  GenericSearchUI,
+  HumanReviewUI,
+  InspectResultUI,
+  PrepareVisualizationUI,
+  RenderVisualizationUI,
+  RetrieveContextUI,
+  SummarizeResultUI,
+  ValidateActionUI,
+  ValidateSqlUI,
+} from "@/components/agent-tool-uis";
 import { registry } from "@/lib/registry";
 import { createStreamingFetch } from "@/lib/streaming-fetch";
 import { useMemo, useRef, type FC } from "react";
 
-function withGhostReasoning(
-  Component: ToolCallMessagePartComponent,
-  label: string,
-): ToolCallMessagePartComponent {
-  return (props) => {
-    const isRunning = props.status?.type === "running";
-    return (
-      <ReasoningRoot variant="ghost" defaultOpen={true} className="m-2">
-        <ReasoningTrigger active={isRunning} label={label} />
-        <ReasoningContent>
-          <Component {...props} />
-        </ReasoningContent>
-      </ReasoningRoot>
-    );
-  };
-}
-
+// ─── Fallback for unrecognised tools ─────────────────────────────────────────
 
 const ToolFallbackWithAgent: ToolCallMessagePartComponent = (props) => (
   <div className="m-2">
@@ -60,9 +55,11 @@ const ToolFallbackWithAgent: ToolCallMessagePartComponent = (props) => (
   </div>
 );
 
-// Use the local backend by default so the UI talks to the LightRAG SSE endpoint.
+// ─── API URL ──────────────────────────────────────────────────────────────────
+
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:3000/api/chat";
 
+// ─── Assistant message ────────────────────────────────────────────────────────
 
 const ChatAssistantMessage: FC = () => {
   const parts = useAuiState((s) => s.message.parts);
@@ -74,7 +71,6 @@ const ChatAssistantMessage: FC = () => {
           acc.push({ type: "text", text: part.text });
           return acc;
         }
-
         if (part.type === "data" && part.name === "spec") {
           acc.push({ type: "data-spec", data: part.data });
         } else {
@@ -83,7 +79,6 @@ const ChatAssistantMessage: FC = () => {
             acc.push({ type: "data-spec", data: p.data });
           }
         }
-
         return acc;
       }, []),
     [parts],
@@ -101,26 +96,33 @@ const ChatAssistantMessage: FC = () => {
             Text: MarkdownText,
             tools: {
               by_name: {
-                // Phase 1 – Data Gathering: raw code block display
-                synthesize_gathered_data: withGhostReasoning(ToolFallback, "Structured data"),
-                search: withGhostReasoning(ToolFallback, "Search"),
-                calculator: withGhostReasoning(ToolFallback, "Calculator"),
-                multiply_numbers: withGhostReasoning(ToolFallback, "Calculator"),
-                retrieval_agent_tool: withGhostReasoning(ToolFallback, "Retrieval"),
-                create_sql_agent_tool: SqlQueryMakerTool,
-                execute_sql_agent_tool: SqlExecutionRegistrar,
-                // Phase 2 – UI Discovery
-                lightrag_ui_component_retrieve: withGhostReasoning(LightragUiRetrievalTool, "UI Component Discovery"),
-                // Phase 2.5 – Normalization Agent
-                normalize_data: withGhostReasoning(ToolFallback, "Normalization Agent"),
+                // Phase 1 – Context & Clarification
+                retrieve_context:           RetrieveContextUI,
+                answer_from_context:        AnswerFromContextUI,
+                clarification_request:      ClarificationRequestUI,
+                generic_search:             GenericSearchUI,
+                calculator:                 CalculatorUI,
+                // Phase 2 – SQL / Action
+                generate_sql:               GenerateSqlUI,
+                validate_sql:               ValidateSqlUI,
+                execute_sql:                ExecuteSqlUI,
+                generate_action:            GenerateActionUI,
+                validate_action:            ValidateActionUI,
+                execute_system_action:      ExecuteSystemActionUI,
+                // Phase 3 – Result & Visualization
+                inspect_result:             InspectResultUI,
+                prepare_visualization_data: PrepareVisualizationUI,
+                render_visualization:       RenderVisualizationUI,
+                // Phase 4 – Review & Response
+                human_review_gate:          HumanReviewUI,
+                summarize_result:           SummarizeResultUI,
+                compose_final_response:     ComposeResponseUI,
               },
               Fallback: ToolFallbackWithAgent,
             },
           }}
         />
-        {hasSpec && spec && (
-          <Renderer spec={spec} registry={registry} />
-        )}
+        {hasSpec && spec && <Renderer spec={spec} registry={registry} />}
         <MessageError />
       </div>
 
@@ -131,6 +133,8 @@ const ChatAssistantMessage: FC = () => {
     </MessagePrimitive.Root>
   );
 };
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ChatPage() {
   const fetchRef = useRef(createStreamingFetch());

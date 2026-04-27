@@ -633,55 +633,71 @@ const STREAMING_NODES = new Set([
   'composeFinalResponse',
 ]);
 
-// LangGraph node name → tool name shown in the frontend tool UI panel
-const TOOL_NODE_NAMES = new Map<string, string>([
-  ['retrieveContext',           'retrieve_context'],
-  ['generateSqlOrToolCall',     'generate_action'],
-  ['validateSqlAction',         'validate_action'],
-  ['executeSqlCallSystem',      'execute_sql'],
-  ['inspectResult',             'inspect_result'],
-  ['decideNextStep',            'decide_next_step'],
-  ['callExternalSystem',        'execute_system_action'],
-  ['populateVisualizationData', 'prepare_visualization'],
-  ['renderVisualization',       'render_visualization'],
-  ['summarizeResult',           'summarize_result'],
-  ['humanReview',               'human_review'],
-]);
+// Resolve the frontend tool name for a LangGraph node, given the current state.
+// Returns undefined for pure-routing nodes that have no frontend tool counterpart.
+// SQL vs action paths are resolved dynamically so the correct tool is highlighted.
+function resolveToolName(nodeName: string, state: AgentState): string | undefined {
+  switch (nodeName) {
+    case 'retrieveContext':           return 'retrieve_context';
+    case 'answerFromLightRAG':        return 'answer_from_context';
+    case 'disambiguateAskUser':       return 'clarification_request';
+    case 'generateSqlOrToolCall':     return state.strategy === 'sql' ? 'generate_sql' : 'generate_action';
+    case 'validateSqlAction':         return state.generatedSql ? 'validate_sql' : 'validate_action';
+    case 'executeSqlCallSystem':      return state.generatedSql ? 'execute_sql' : 'execute_system_action';
+    case 'callExternalSystem':        return 'execute_system_action';
+    case 'inspectResult':             return 'inspect_result';
+    case 'populateVisualizationData': return 'prepare_visualization_data';
+    case 'renderVisualization':       return 'render_visualization';
+    case 'summarizeResult':           return 'summarize_result';
+    case 'humanReview':               return 'human_review_gate';
+    case 'composeFinalResponse':      return 'compose_final_response';
+    default:                          return undefined;
+  }
+}
 
 function extractNodeArgs(nodeName: string, state: AgentState): Record<string, unknown> {
+  const action = state.generatedAction as Record<string, unknown> | undefined;
   switch (nodeName) {
     case 'retrieveContext':
-      return { query: state.userIntent ?? state.messages.at(-1)?.content ?? '', mode: 'hybrid' };
+      return { query: state.userIntent ?? state.messages.at(-1)?.content ?? '', mode: 'hybrid', strategy: state.strategy };
+    case 'answerFromLightRAG':
+      return { intent: state.userIntent, documentCount: state.retrievedContext?.documents?.length ?? 0, enoughContext: state.enoughContext };
+    case 'disambiguateAskUser':
+      return { intent: state.userIntent, plan: state.currentPlan };
     case 'generateSqlOrToolCall':
-      return { strategy: state.strategy, intent: state.userIntent };
+      return state.strategy === 'sql'
+        ? { intent: state.userIntent, dialect: state.sqlDialect ?? 'postgres', strategy: 'sql', retry: state.retryCount }
+        : { intent: state.userIntent, strategy: state.strategy, system: state.strategy === 'system_tool' ? 'calculator' : 'generic_search' };
     case 'validateSqlAction':
       return state.generatedSql
         ? { sql: state.generatedSql, dialect: state.sqlDialect }
-        : { toolName: (state.generatedAction as Record<string, unknown> | undefined)?.toolName };
+        : { toolName: action?.toolName, input: action?.input };
     case 'executeSqlCallSystem':
       return state.generatedSql
         ? { sql: state.generatedSql }
-        : { toolName: (state.generatedAction as Record<string, unknown> | undefined)?.toolName };
+        : { toolName: action?.toolName, input: action?.input };
+    case 'callExternalSystem':
+      return { intent: state.userIntent, hasPreviousResult: state.executionResult !== undefined };
     case 'inspectResult':
       return { intent: state.userIntent, hasResult: state.executionResult !== undefined };
-    case 'decideNextStep':
-      return { intent: state.userIntent };
-    case 'callExternalSystem':
-      return { intent: state.userIntent };
     case 'populateVisualizationData':
-      return { hasResult: state.executionResult !== undefined };
+      return { hasResult: state.executionResult !== undefined, dataShape: state.inspectionDataShape };
     case 'renderVisualization':
-      return { componentType: state.visualizationComponentType };
+      return { componentType: state.visualizationComponentType, props: state.visualizationProps };
     case 'summarizeResult':
-      return { intent: state.userIntent };
+      return { intent: state.userIntent, hasResult: state.executionResult !== undefined };
     case 'humanReview':
-      return { reason: state.validationReason, riskLevel: state.isUnsafe ? 'high' : 'medium' };
+      return { reason: state.validationReason, riskLevel: state.isUnsafe ? 'high' : 'medium', sql: state.generatedSql };
+    case 'composeFinalResponse':
+      return { intent: state.userIntent, hasSummary: Boolean(state.summary), hasVisualization: Boolean(state.visualizationPayload), reviewNotes: state.reviewNotes };
     default:
       return {};
   }
 }
 
 function summarizeNodeOutput(nodeName: string, output: Partial<AgentState>): unknown {
+  const genAction = output.generatedAction as Record<string, unknown> | undefined;
+  const vizPayload = output.visualizationPayload as Record<string, unknown> | undefined;
   switch (nodeName) {
     case 'retrieveContext':
       return {
@@ -689,31 +705,30 @@ function summarizeNodeOutput(nodeName: string, output: Partial<AgentState>): unk
         documentCount: output.retrievedContext?.documents?.length ?? 0,
         summary: output.retrievedContext?.contextSummary,
       };
+    case 'answerFromLightRAG':
+    case 'disambiguateAskUser':
+      return { responseLength: output.finalResponse?.length ?? 0 };
     case 'generateSqlOrToolCall':
       return output.generatedSql
-        ? { type: 'sql', sql: output.generatedSql }
-        : { type: 'action', toolName: (output.generatedAction as Record<string, unknown> | undefined)?.toolName };
+        ? { type: 'sql', sql: output.generatedSql, dialect: output.sqlDialect }
+        : { type: 'action', toolName: genAction?.toolName, input: genAction?.input };
     case 'validateSqlAction':
-      return { status: output.validationStatus, reason: output.validationReason };
+      return { status: output.validationStatus, reason: output.validationReason, isUnsafe: output.isUnsafe };
     case 'executeSqlCallSystem':
+    case 'callExternalSystem':
       return output.executionResult;
     case 'inspectResult':
       return { complete: output.taskComplete, dataShape: output.inspectionDataShape };
-    case 'decideNextStep':
-      return { nextStep: output.nextStepDecision };
-    case 'callExternalSystem':
-      return output.executionResult;
     case 'populateVisualizationData':
       return { suitable: output.suitableForVisualization, componentType: output.visualizationComponentType };
     case 'renderVisualization':
-      return {
-        rendered: output.visualizationPayload !== undefined,
-        componentType: (output.visualizationPayload as Record<string, unknown> | undefined)?.componentType,
-      };
+      return { rendered: vizPayload !== undefined, componentType: vizPayload?.componentType };
     case 'summarizeResult':
       return { summary: output.summary };
     case 'humanReview':
       return { reviewNotes: output.reviewNotes };
+    case 'composeFinalResponse':
+      return { responseLength: output.finalResponse?.length ?? 0 };
     default:
       return output;
   }
@@ -757,8 +772,9 @@ export class ChatService implements OnModuleInit {
       execute: async ({ writer }) => {
         // AI SDK v6 UIMessageStreamWriter: text parts require text-start → text-delta → text-end
         // with a stable id per part. We track one active text part per node.
-        const textPartIds = new Map<string, string>(); // nodeName → part id
-        const toolCallIds = new Map<string, string>();  // nodeName → toolCallId
+        const textPartIds = new Map<string, string>();      // nodeName → part id
+        const toolCallIds = new Map<string, string>();      // nodeName → toolCallId
+        const resolvedToolNames = new Map<string, string>(); // nodeName → resolved tool name
 
         const startTextPart = (nodeName: string) => {
           if (!textPartIds.has(nodeName)) {
@@ -785,31 +801,36 @@ export class ChatService implements OnModuleInit {
             const nodeName = event.metadata?.langgraph_node as string | undefined;
 
             // Log node transitions
-            if (event.event === 'on_node_start' && event.name) {
+            if (event.event === 'on_chain_start' && event.name) {
               this.logger.debug({ threadId, node: event.name }, 'Node started');
             }
-            if (event.event === 'on_node_end' && event.name) {
+            if (event.event === 'on_chain_end' && event.name) {
               this.logger.debug({ threadId, node: event.name }, 'Node completed');
             }
 
             // Announce tool-node execution to the frontend tool UI
-            if (event.event === 'on_node_start' && event.name && TOOL_NODE_NAMES.has(event.name)) {
-              const toolCallId = randomUUID();
-              toolCallIds.set(event.name, toolCallId);
-              const toolName = TOOL_NODE_NAMES.get(event.name)!;
-              const state = event.data?.input as AgentState | undefined;
-              const input = state ? extractNodeArgs(event.name, state) : {};
-              this.logger.info({ threadId, toolName, input }, 'Tool node executing');
-              writer.write({ type: 'tool-input-available', toolCallId, toolName, input });
+            if (event.event === 'on_chain_start' && event.name) {
+              const nodeState = event.data?.input as AgentState | undefined;
+              const toolName = nodeState ? resolveToolName(event.name, nodeState) : undefined;
+              if (toolName) {
+                const toolCallId = randomUUID();
+                toolCallIds.set(event.name, toolCallId);
+                resolvedToolNames.set(event.name, toolName);
+                const input = nodeState ? extractNodeArgs(event.name, nodeState) : {};
+                this.logger.info({ threadId, toolName, input }, 'Tool node executing');
+                writer.write({ type: 'tool-input-available', toolCallId, toolName, input });
+              }
             }
 
             // Deliver tool-node output to the frontend tool UI
-            if (event.event === 'on_node_end' && event.name && toolCallIds.has(event.name)) {
+            if (event.event === 'on_chain_end' && event.name && toolCallIds.has(event.name)) {
               const toolCallId = toolCallIds.get(event.name)!;
+              const toolName = resolvedToolNames.get(event.name)!;
               toolCallIds.delete(event.name);
+              resolvedToolNames.delete(event.name);
               const output = event.data?.output as Partial<AgentState> | undefined;
               const summary = summarizeNodeOutput(event.name, output ?? {});
-              this.logger.info({ threadId, node: event.name, summary }, 'Tool node result');
+              this.logger.info({ threadId, node: event.name, toolName, summary }, 'Tool node result');
               const deltaText = typeof summary === 'string'
                 ? summary
                 : JSON.stringify(summary, null, 2);
@@ -820,31 +841,43 @@ export class ChatService implements OnModuleInit {
             }
 
             // Stream text deltas from LLM-generating nodes
-            if (event.event === 'on_chat_model_stream' && nodeName && STREAMING_NODES.has(nodeName)) {
-              startTextPart(nodeName);
-              const id = textPartIds.get(nodeName)!;
+            if (event.event === 'on_chat_model_stream' && nodeName) {
               const content = (event.data?.chunk as { content?: unknown })?.content;
-
+              let delta = '';
               if (typeof content === 'string' && content) {
-                writer.write({ type: 'text-delta', id, delta: content });
+                delta = content;
               } else if (Array.isArray(content)) {
                 for (const block of content as Array<{ type?: string; text?: string }>) {
-                  if (block.type === 'text' && block.text) {
-                    writer.write({ type: 'text-delta', id, delta: block.text });
-                  }
+                  if (block.type === 'text' && block.text) delta += block.text;
+                }
+              }
+
+              if (delta) {
+                // Route to main message for terminal streaming nodes
+                if (STREAMING_NODES.has(nodeName)) {
+                  startTextPart(nodeName);
+                  const id = textPartIds.get(nodeName)!;
+                  writer.write({ type: 'text-delta', id, delta });
+                }
+
+                // Route into tool group UI for all tracked nodes
+                if (toolCallIds.has(nodeName)) {
+                  const toolCallId = toolCallIds.get(nodeName)!;
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  writer.write({ type: 'tool-output-delta', toolCallId, delta } as any);
                 }
               }
             }
 
             // Close the text part when a streaming node finishes
-            if (event.event === 'on_node_end' && event.name && textPartIds.has(event.name)) {
+            if (event.event === 'on_chain_end' && event.name && textPartIds.has(event.name)) {
               const id = textPartIds.get(event.name)!;
               writer.write({ type: 'text-end', id });
               textPartIds.delete(event.name);
             }
 
             // Emit visualization payload as AI SDK data part when the node completes
-            if (event.event === 'on_node_end' && event.name === 'renderVisualization') {
+            if (event.event === 'on_chain_end' && event.name === 'renderVisualization') {
               try {
                 const nodeOutput = event.data?.output as Partial<AgentState> | undefined;
                 const ds = nodeOutput?.visualizationPayload as DataSpecPayload | undefined;

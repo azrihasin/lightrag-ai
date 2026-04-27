@@ -87,15 +87,36 @@ function ToolFallbackArgs({
 }) {
   if (!argsText) return null;
 
+  const display = prettifyIfJson(argsText);
+
   return (
     <div
       data-slot="tool-fallback-args"
       className={cn("aui-tool-fallback-args", className)}
       {...props}
     >
-      <pre className="aui-tool-fallback-args-value whitespace-pre-wrap">
-        {argsText}
-      </pre>
+      <div className="aui-tool-fallback-args-value prose prose-sm dark:prose-invert max-w-none text-sm leading-relaxed [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          components={{
+            pre: ({ children, ...preProps }) => (
+              <ExpandableCodeBlock {...preProps}>{children}</ExpandableCodeBlock>
+            ),
+            code: ({ children, className: codeClass, ...codeProps }) => {
+              const isBlock = codeClass?.includes("language-");
+              return isBlock ? (
+                <code {...codeProps} className={codeClass}>{children}</code>
+              ) : (
+                <code {...codeProps} className="rounded bg-[#f6f8fa] dark:bg-[#161b22] px-1 py-0.5 text-xs font-mono">
+                  {children}
+                </code>
+              );
+            },
+          }}
+        >
+          {display}
+        </ReactMarkdown>
+      </div>
     </div>
   );
 }
@@ -358,16 +379,18 @@ const ToolFallbackImpl: ToolCallMessagePartComponent & {
   status,
   ...rest
 }) => {
-  const agentName = (rest as { agentName?: string }).agentName;
+  void toolName;
+  void (rest as { agentName?: string }).agentName;
   const isCancelled =
     status?.type === "incomplete" && status.reason === "cancelled";
-
-  void toolName;
-  void agentName;
 
   return (
     <div className="flex flex-col gap-2">
       <ToolFallbackError status={status} />
+      <ToolFallbackArgs
+        argsText={argsText}
+        className={cn(isCancelled && "opacity-60")}
+      />
       {!isCancelled && (
         <ToolFallbackResult result={result} status={status} toolCallId={toolCallId} />
       )}
