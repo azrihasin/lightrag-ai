@@ -16,7 +16,6 @@ export class CalculatorTool {
           if (!/^[\d\s+\-*/().%^,e]+$/i.test(expression)) {
             return { error: 'Expression contains disallowed characters.' };
           }
-          // eslint-disable-next-line no-new-func
           const raw = new Function(`"use strict"; return (${expression});`)() as unknown;
           if (typeof raw !== 'number' || !isFinite(raw)) {
             return { error: 'Expression did not yield a finite number.' };

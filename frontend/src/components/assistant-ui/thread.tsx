@@ -41,7 +41,6 @@ import type { FC } from "react";
 import type { ToolCallMessagePartComponent } from "@assistant-ui/react";
 
 const ToolFallbackWithAgent: ToolCallMessagePartComponent = (props) => (
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   <ToolFallback {...(props as any)} agentName={getAgentForTool(props.toolName)} />
 );
 

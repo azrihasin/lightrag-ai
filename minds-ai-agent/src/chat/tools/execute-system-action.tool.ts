@@ -63,7 +63,6 @@ export class ExecuteSystemActionTool {
             if (!/^[\d\s+\-*/().%^,e]+$/i.test(expr)) {
               result = { error: 'Expression contains disallowed characters.' };
             } else {
-              // eslint-disable-next-line no-new-func
               const raw = new Function(`"use strict"; return (${expr});`)() as unknown;
               result =
                 typeof raw === 'number' && isFinite(raw)

@@ -101,9 +101,7 @@ const IntentAnalysisSchema = z
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function callTool(tools: ToolMap, name: string, input: Record<string, unknown>): Promise<any> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return (tools[name] as any).execute(input, { toolCallId: randomUUID(), messages: [] });
 }
 
@@ -621,7 +619,6 @@ function buildGraph(llm: LlmClient, tools: ToolMap, logger: PinoLogger): Compile
     });
 
   const memory = new MemorySaver();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return workflow.compile({ checkpointer: memory }) as any;
 }
 
@@ -736,7 +733,6 @@ function summarizeNodeOutput(nodeName: string, output: Partial<AgentState>): unk
 
 @Injectable()
 export class ChatService implements OnModuleInit {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private app!: CompiledStateGraph<AgentState, Partial<AgentState>, any>;
 
   constructor(
@@ -835,7 +831,6 @@ export class ChatService implements OnModuleInit {
                 ? summary
                 : JSON.stringify(summary, null, 2);
               // tool-output-delta is intercepted by streaming-fetch.ts before the AI SDK sees it
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
               writer.write({ type: 'tool-output-delta', toolCallId, delta: deltaText } as any);
               writer.write({ type: 'tool-output-available', toolCallId, output: summary });
             }
@@ -863,7 +858,6 @@ export class ChatService implements OnModuleInit {
                 // Route into tool group UI for all tracked nodes
                 if (toolCallIds.has(nodeName)) {
                   const toolCallId = toolCallIds.get(nodeName)!;
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   writer.write({ type: 'tool-output-delta', toolCallId, delta } as any);
                 }
               }

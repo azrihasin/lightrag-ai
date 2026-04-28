@@ -50,7 +50,6 @@ import { useMemo, useRef, type FC } from "react";
 
 const ToolFallbackWithAgent: ToolCallMessagePartComponent = (props) => (
   <div className="m-2">
-    {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
     <ToolFallback {...(props as any)} agentName={getAgentForTool(props.toolName)} />
   </div>
 );

@@ -217,7 +217,6 @@ const AssistantMessage: FC = () => {
             if (part.type === "text") return <MarkdownText />;
             if (part.type === "reasoning") return <Reasoning {...part} />;
             if (part.type === "tool-call")
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
               return part.toolUI ?? <ToolFallback {...(part as any)} agentName={getAgentForTool(part.toolName)} />;
             if (part.type === "source") return <Sources {...part} />;
             return null;

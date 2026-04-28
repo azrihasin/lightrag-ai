@@ -203,7 +203,6 @@ const SqlQueryMakerToolImpl: ToolCallMessagePartComponent = (props) => {
 
   useEffect(() => {
     registerQueryMaker(props.toolCallId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.toolCallId]);
 
   const executionSnap = useSyncExternalStore(
