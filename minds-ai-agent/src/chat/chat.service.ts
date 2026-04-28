@@ -696,12 +696,25 @@ function summarizeNodeOutput(nodeName: string, output: Partial<AgentState>): unk
   const genAction = output.generatedAction as Record<string, unknown> | undefined;
   const vizPayload = output.visualizationPayload as Record<string, unknown> | undefined;
   switch (nodeName) {
-    case 'retrieveContext':
+    case 'retrieveContext': {
+      const docs = output.retrievedContext?.documents ?? [];
+      const items = docs.map((d) => ({
+        title: d.title ?? d.id ?? 'Unknown',
+        source: d.source,
+        score: typeof d.score === 'number' ? Math.round(d.score * 100) / 100 : undefined,
+      }));
+      const sources = items
+        .map((it) => it.source)
+        .filter((s): s is string => Boolean(s))
+        .slice(0, 8);
       return {
         sufficient: output.retrievedContext?.sufficient,
-        documentCount: output.retrievedContext?.documents?.length ?? 0,
+        documentCount: docs.length,
+        items,
+        sources,
         summary: output.retrievedContext?.contextSummary,
       };
+    }
     case 'answerFromLightRAG':
     case 'disambiguateAskUser':
       return { responseLength: output.finalResponse?.length ?? 0 };
@@ -815,6 +828,15 @@ export class ChatService implements OnModuleInit {
                 const input = nodeState ? extractNodeArgs(event.name, nodeState) : {};
                 this.logger.info({ threadId, toolName, input }, 'Tool node executing');
                 writer.write({ type: 'tool-input-available', toolCallId, toolName, input });
+
+                // Emit an initial streaming delta for retrieve_context so the
+                // frontend has something to show while LightRAG is being queried.
+                if (toolName === 'retrieve_context' && input.query) {
+                  const query = String(input.query);
+                  const mode = input.mode ? ` (${String(input.mode)})` : '';
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  writer.write({ type: 'tool-output-delta', toolCallId, delta: `Searching knowledge base${mode} for: "${query}"…` } as any);
+                }
               }
             }
 

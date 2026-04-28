@@ -2,29 +2,7 @@
 
 import { memo, type ReactNode } from "react";
 import type { ToolCallMessagePartComponent } from "@assistant-ui/react";
-import { cn } from "@/lib/utils";
 import { useToolOutputStreamStore } from "@/lib/tool-output-stream";
-import {
-  AlertTriangleIcon,
-  BarChart2Icon,
-  BookOpenIcon,
-  CalculatorIcon,
-  CheckCircle2Icon,
-  Code2Icon,
-  DatabaseIcon,
-  EyeIcon,
-  HelpCircleIcon,
-  LayoutIcon,
-  ListIcon,
-  LoaderIcon,
-  PenLineIcon,
-  PlayIcon,
-  SearchIcon,
-  ShieldCheckIcon,
-  TerminalIcon,
-  XCircleIcon,
-  ZapIcon,
-} from "lucide-react";
 import {
   ToolGroupContent,
   ToolGroupRoot,
@@ -49,7 +27,7 @@ function trunc(v: unknown, max = 60): string {
   return s.length > max ? `${s.slice(0, max)}…` : s;
 }
 
-// ─── Shared wrapper: one ToolGroupRoot per node ───────────────────────────────
+// ─── Shared wrapper ───────────────────────────────────────────────────────────
 
 type StatusType = { type: string } | undefined;
 
@@ -57,7 +35,7 @@ type AgentToolGroupProps = {
   label: string;
   status: StatusType;
   toolCallId?: string;
-  children: ReactNode;
+  children?: ReactNode;
 };
 
 function NodeStreamingText({ toolCallId, status }: { toolCallId?: string; status: StatusType }) {
@@ -85,84 +63,134 @@ function AgentToolGroup({ label, status, toolCallId, children }: AgentToolGroupP
   );
 }
 
-// ─── Shared content row ───────────────────────────────────────────────────────
+// ─── Retrieve Context — rich streaming display ────────────────────────────────
 
-type RowProps = {
-  icon: ReactNode;
-  detail?: string;
-  result?: string;
+type RetrievedItem = { title?: string; source?: string; score?: number };
+
+function RetrieveContextStream({
+  toolCallId,
+  status,
+  result,
+}: {
+  toolCallId?: string;
   status: StatusType;
-  className?: string;
-};
-
-function ToolRow({ icon, detail, result, status, className }: RowProps) {
+  result: string | undefined;
+}) {
+  const partial = useToolOutputStreamStore(
+    (s) => (toolCallId ? (s.partials[toolCallId] ?? "") : ""),
+  );
   const isRunning = status?.type === "running";
-  const isError = status?.type === "incomplete";
+  const out = parseJson(result);
 
-  return (
-    <div className={cn("flex items-start gap-2.5 py-0.5 px-1", className)}>
-      <div className="mt-0.5 shrink-0 text-muted-foreground/60">{icon}</div>
-      <div className="min-w-0 flex-1">
-        {detail && (
-          <p className="truncate text-xs text-muted-foreground/75">{detail}</p>
+  // ── Running: stream the initial delta text ────────────────────────────────
+  if (isRunning && partial) {
+    return (
+      <div className="mt-1 px-1">
+        <p className="text-xs text-muted-foreground/70 whitespace-pre-wrap leading-relaxed">
+          {partial}
+          <span className="ml-0.5 inline-block h-3 w-px animate-pulse bg-muted-foreground/50 align-middle" />
+        </p>
+      </div>
+    );
+  }
+
+  // ── Complete: code block + summary + source badges ────────────────────────
+  if (!isRunning && result) {
+    const rawItems = out.items;
+    const items: RetrievedItem[] = Array.isArray(rawItems)
+      ? (rawItems as RetrievedItem[])
+      : [];
+    const rawSources = out.sources;
+    const sources: string[] = Array.isArray(rawSources)
+      ? (rawSources as unknown[]).map((s) => String(s))
+      : [];
+    const summary = typeof out.summary === "string" ? out.summary : "";
+
+    const codeLines = items.map((item, i) => {
+      const title = item.title ?? `Item ${i + 1}`;
+      const src = item.source ?? "—";
+      const score =
+        typeof item.score === "number"
+          ? ` (score: ${item.score.toFixed(2)})`
+          : "";
+      return `[${i + 1}] ${title}\n    source: ${src}${score}`;
+    });
+
+    return (
+      <div className="mt-1.5 space-y-2.5 px-1">
+        {/* Retrieved items code block */}
+        {codeLines.length > 0 && (
+          <pre className="overflow-x-auto rounded-md bg-muted px-3 py-2 text-xs font-mono leading-relaxed text-muted-foreground">
+            {codeLines.join("\n\n")}
+          </pre>
         )}
-        {result && !isRunning && (
-          <p className="mt-0.5 truncate text-xs text-muted-foreground/50">
-            {result}
+
+        {/* Streaming summary */}
+        {summary && (
+          <p className="text-xs leading-relaxed text-muted-foreground/75">
+            {summary}
           </p>
         )}
-      </div>
-      <div className="mt-0.5 shrink-0">
-        {isRunning && (
-          <LoaderIcon className="size-3 animate-spin text-muted-foreground/50" />
+
+        {/* Source file references */}
+        {sources.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            <span className="self-center text-xs text-muted-foreground/40 mr-0.5">
+              sources:
+            </span>
+            {sources.slice(0, 8).map((src, i) => (
+              <span
+                key={i}
+                className="inline-flex items-center rounded-md bg-muted px-2 py-0.5 text-xs font-mono text-muted-foreground ring-1 ring-inset ring-muted-foreground/20"
+              >
+                {src}
+              </span>
+            ))}
+            {sources.length > 8 && (
+              <span className="self-center text-xs text-muted-foreground/40">
+                +{sources.length - 8} more
+              </span>
+            )}
+          </div>
         )}
-        {!isRunning && !isError && status && (
-          <CheckCircle2Icon className="size-3 text-green-500" />
-        )}
-        {isError && <XCircleIcon className="size-3 text-destructive" />}
       </div>
-    </div>
-  );
+    );
+  }
+
+  return null;
 }
 
 // ─── Phase 1 – Context & Clarification ───────────────────────────────────────
 
 export const RetrieveContextUI: ToolCallMessagePartComponent = memo(
-  ({ argsText, result, status, toolCallId }) => {
-    const args = parseJson(argsText);
-    const out = parseJson(result);
+  ({ result, status, toolCallId }) => {
+    const isRunning = status?.type === "running";
     return (
-      <AgentToolGroup label="Retrieve Context" status={status} toolCallId={toolCallId}>
-        <ToolRow
-          icon={<DatabaseIcon className="size-3.5" />}
-          detail={trunc(args.query)}
-          result={
-            out.documentCount !== undefined
-              ? `${out.documentCount} docs · sufficient: ${out.sufficient}`
-              : undefined
-          }
-          status={status}
-        />
-      </AgentToolGroup>
+      <ToolGroupRoot variant="ghost" defaultOpen className="my-1 mx-2">
+        <ToolGroupTrigger count={1} label="Retrieve Context" active={isRunning} />
+        <ToolGroupContent>
+          <RetrieveContextStream
+            toolCallId={toolCallId}
+            status={status}
+            result={result}
+          />
+        </ToolGroupContent>
+      </ToolGroupRoot>
     );
   },
 );
 RetrieveContextUI.displayName = "RetrieveContextUI";
 
 export const AnswerFromContextUI: ToolCallMessagePartComponent = memo(
-  ({ argsText, result, status, toolCallId }) => {
-    const args = parseJson(argsText);
+  ({ result, status, toolCallId }) => {
     const out = parseJson(result);
     return (
       <AgentToolGroup label="Answer from Context" status={status} toolCallId={toolCallId}>
-        <ToolRow
-          icon={<BookOpenIcon className="size-3.5" />}
-          detail={trunc(args.intent)}
-          result={
-            out.responseLength ? `${out.responseLength} chars composed` : undefined
-          }
-          status={status}
-        />
+        {out.responseLength ? (
+          <p className="px-1 text-xs text-muted-foreground/50">
+            {String(out.responseLength)} chars composed
+          </p>
+        ) : null}
       </AgentToolGroup>
     );
   },
@@ -170,17 +198,15 @@ export const AnswerFromContextUI: ToolCallMessagePartComponent = memo(
 AnswerFromContextUI.displayName = "AnswerFromContextUI";
 
 export const ClarificationRequestUI: ToolCallMessagePartComponent = memo(
-  ({ argsText, result, status, toolCallId }) => {
-    const args = parseJson(argsText);
+  ({ result, status, toolCallId }) => {
     const out = parseJson(result);
     return (
       <AgentToolGroup label="Clarification Request" status={status} toolCallId={toolCallId}>
-        <ToolRow
-          icon={<HelpCircleIcon className="size-3.5" />}
-          detail={trunc(args.intent)}
-          result={out.responseLength ? `${out.responseLength} chars` : undefined}
-          status={status}
-        />
+        {out.responseLength ? (
+          <p className="px-1 text-xs text-muted-foreground/50">
+            {String(out.responseLength)} chars
+          </p>
+        ) : null}
       </AgentToolGroup>
     );
   },
@@ -188,53 +214,37 @@ export const ClarificationRequestUI: ToolCallMessagePartComponent = memo(
 ClarificationRequestUI.displayName = "ClarificationRequestUI";
 
 export const GenericSearchUI: ToolCallMessagePartComponent = memo(
-  ({ argsText, result, status, toolCallId }) => {
-    const args = parseJson(argsText);
-    return (
-      <AgentToolGroup label="Generic Search" status={status} toolCallId={toolCallId}>
-        <ToolRow
-          icon={<SearchIcon className="size-3.5" />}
-          detail={trunc(args.intent ?? args.query)}
-          result={result !== undefined ? trunc(result, 80) : undefined}
-          status={status}
-        />
-      </AgentToolGroup>
-    );
-  },
+  ({ result, status, toolCallId }) => (
+    <AgentToolGroup label="Generic Search" status={status} toolCallId={toolCallId}>
+      {result !== undefined ? (
+        <p className="px-1 text-xs text-muted-foreground/50">{trunc(result, 80)}</p>
+      ) : null}
+    </AgentToolGroup>
+  ),
 );
 GenericSearchUI.displayName = "GenericSearchUI";
 
 export const CalculatorUI: ToolCallMessagePartComponent = memo(
-  ({ argsText, result, status, toolCallId }) => {
-    const args = parseJson(argsText);
-    return (
-      <AgentToolGroup label="Calculator" status={status} toolCallId={toolCallId}>
-        <ToolRow
-          icon={<CalculatorIcon className="size-3.5" />}
-          detail={trunc(args.expression ?? args.a ?? argsText)}
-          result={result !== undefined ? `= ${trunc(result)}` : undefined}
-          status={status}
-        />
-      </AgentToolGroup>
-    );
-  },
+  ({ result, status, toolCallId }) => (
+    <AgentToolGroup label="Calculator" status={status} toolCallId={toolCallId}>
+      {result !== undefined ? (
+        <p className="px-1 text-xs text-muted-foreground/50">= {trunc(result)}</p>
+      ) : null}
+    </AgentToolGroup>
+  ),
 );
 CalculatorUI.displayName = "CalculatorUI";
 
 // ─── Phase 2 – SQL / Action ───────────────────────────────────────────────────
 
 export const GenerateSqlUI: ToolCallMessagePartComponent = memo(
-  ({ argsText, result, status, toolCallId }) => {
-    const args = parseJson(argsText);
+  ({ result, status, toolCallId }) => {
     const out = parseJson(result);
     return (
       <AgentToolGroup label="Generate SQL" status={status} toolCallId={toolCallId}>
-        <ToolRow
-          icon={<Code2Icon className="size-3.5" />}
-          detail={`${args.dialect ?? "postgres"} · ${trunc(args.intent)}`}
-          result={out.sql ? trunc(out.sql, 80) : undefined}
-          status={status}
-        />
+        {out.sql ? (
+          <p className="px-1 text-xs text-muted-foreground/50 truncate">{trunc(out.sql, 80)}</p>
+        ) : null}
       </AgentToolGroup>
     );
   },
@@ -242,21 +252,14 @@ export const GenerateSqlUI: ToolCallMessagePartComponent = memo(
 GenerateSqlUI.displayName = "GenerateSqlUI";
 
 export const ValidateSqlUI: ToolCallMessagePartComponent = memo(
-  ({ argsText, result, status, toolCallId }) => {
-    const args = parseJson(argsText);
+  ({ result, status, toolCallId }) => {
     const out = parseJson(result);
+    const text = out.status
+      ? `${out.status}${out.reason ? ` · ${trunc(out.reason, 40)}` : ""}`
+      : undefined;
     return (
       <AgentToolGroup label="Validate SQL" status={status} toolCallId={toolCallId}>
-        <ToolRow
-          icon={<ShieldCheckIcon className="size-3.5" />}
-          detail={trunc(args.sql)}
-          result={
-            out.status
-              ? `${out.status}${out.reason ? ` · ${trunc(out.reason, 40)}` : ""}`
-              : undefined
-          }
-          status={status}
-        />
+        {text ? <p className="px-1 text-xs text-muted-foreground/50">{text}</p> : null}
       </AgentToolGroup>
     );
   },
@@ -264,23 +267,17 @@ export const ValidateSqlUI: ToolCallMessagePartComponent = memo(
 ValidateSqlUI.displayName = "ValidateSqlUI";
 
 export const ExecuteSqlUI: ToolCallMessagePartComponent = memo(
-  ({ argsText, result, status, toolCallId }) => {
-    const args = parseJson(argsText);
+  ({ result, status, toolCallId }) => {
     const out = parseJson(result);
+    const text =
+      out.rowCount !== undefined
+        ? `${out.rowCount} rows`
+        : result !== undefined
+          ? trunc(result, 60)
+          : undefined;
     return (
       <AgentToolGroup label="Execute SQL" status={status} toolCallId={toolCallId}>
-        <ToolRow
-          icon={<PlayIcon className="size-3.5" />}
-          detail={trunc(args.sql)}
-          result={
-            out.rowCount !== undefined
-              ? `${out.rowCount} rows`
-              : result !== undefined
-                ? trunc(result, 60)
-                : undefined
-          }
-          status={status}
-        />
+        {text ? <p className="px-1 text-xs text-muted-foreground/50">{text}</p> : null}
       </AgentToolGroup>
     );
   },
@@ -288,17 +285,13 @@ export const ExecuteSqlUI: ToolCallMessagePartComponent = memo(
 ExecuteSqlUI.displayName = "ExecuteSqlUI";
 
 export const GenerateActionUI: ToolCallMessagePartComponent = memo(
-  ({ argsText, result, status, toolCallId }) => {
-    const args = parseJson(argsText);
+  ({ result, status, toolCallId }) => {
     const out = parseJson(result);
     return (
       <AgentToolGroup label="Generate Action" status={status} toolCallId={toolCallId}>
-        <ToolRow
-          icon={<ZapIcon className="size-3.5" />}
-          detail={`${args.system ?? args.strategy ?? ""} · ${trunc(args.intent)}`}
-          result={out.toolName ? `→ ${out.toolName}` : undefined}
-          status={status}
-        />
+        {out.toolName ? (
+          <p className="px-1 text-xs text-muted-foreground/50">→ {String(out.toolName)}</p>
+        ) : null}
       </AgentToolGroup>
     );
   },
@@ -306,21 +299,14 @@ export const GenerateActionUI: ToolCallMessagePartComponent = memo(
 GenerateActionUI.displayName = "GenerateActionUI";
 
 export const ValidateActionUI: ToolCallMessagePartComponent = memo(
-  ({ argsText, result, status, toolCallId }) => {
-    const args = parseJson(argsText);
+  ({ result, status, toolCallId }) => {
     const out = parseJson(result);
+    const text = out.status
+      ? `${out.status}${out.reason ? ` · ${trunc(out.reason, 40)}` : ""}`
+      : undefined;
     return (
       <AgentToolGroup label="Validate Action" status={status} toolCallId={toolCallId}>
-        <ToolRow
-          icon={<ShieldCheckIcon className="size-3.5" />}
-          detail={trunc(args.toolName)}
-          result={
-            out.status
-              ? `${out.status}${out.reason ? ` · ${trunc(out.reason, 40)}` : ""}`
-              : undefined
-          }
-          status={status}
-        />
+        {text ? <p className="px-1 text-xs text-muted-foreground/50">{text}</p> : null}
       </AgentToolGroup>
     );
   },
@@ -328,38 +314,28 @@ export const ValidateActionUI: ToolCallMessagePartComponent = memo(
 ValidateActionUI.displayName = "ValidateActionUI";
 
 export const ExecuteSystemActionUI: ToolCallMessagePartComponent = memo(
-  ({ argsText, result, status, toolCallId }) => {
-    const args = parseJson(argsText);
-    return (
-      <AgentToolGroup label="Execute System Action" status={status} toolCallId={toolCallId}>
-        <ToolRow
-          icon={<TerminalIcon className="size-3.5" />}
-          detail={trunc(args.toolName ?? args.intent)}
-          result={result !== undefined ? trunc(result, 80) : undefined}
-          status={status}
-        />
-      </AgentToolGroup>
-    );
-  },
+  ({ result, status, toolCallId }) => (
+    <AgentToolGroup label="Execute System Action" status={status} toolCallId={toolCallId}>
+      {result !== undefined ? (
+        <p className="px-1 text-xs text-muted-foreground/50 truncate">{trunc(result, 80)}</p>
+      ) : null}
+    </AgentToolGroup>
+  ),
 );
 ExecuteSystemActionUI.displayName = "ExecuteSystemActionUI";
 
 // ─── Phase 3 – Result & Visualization ────────────────────────────────────────
 
 export const InspectResultUI: ToolCallMessagePartComponent = memo(
-  ({ argsText, result, status, toolCallId }) => {
-    const args = parseJson(argsText);
+  ({ result, status, toolCallId }) => {
     const out = parseJson(result);
     return (
       <AgentToolGroup label="Inspect Result" status={status} toolCallId={toolCallId}>
-        <ToolRow
-          icon={<EyeIcon className="size-3.5" />}
-          detail={trunc(args.intent)}
-          result={
-            out.complete !== undefined ? `complete: ${out.complete}` : undefined
-          }
-          status={status}
-        />
+        {out.complete !== undefined ? (
+          <p className="px-1 text-xs text-muted-foreground/50">
+            complete: {String(out.complete)}
+          </p>
+        ) : null}
       </AgentToolGroup>
     );
   },
@@ -371,14 +347,11 @@ export const PrepareVisualizationUI: ToolCallMessagePartComponent = memo(
     const out = parseJson(result);
     return (
       <AgentToolGroup label="Prepare Visualization" status={status} toolCallId={toolCallId}>
-        <ToolRow
-          icon={<BarChart2Icon className="size-3.5" />}
-          detail={`suitable: ${out.suitable ?? "…"}`}
-          result={
-            out.componentType ? `component: ${out.componentType}` : undefined
-          }
-          status={status}
-        />
+        {out.componentType ? (
+          <p className="px-1 text-xs text-muted-foreground/50">
+            component: {String(out.componentType)}
+          </p>
+        ) : null}
       </AgentToolGroup>
     );
   },
@@ -386,23 +359,17 @@ export const PrepareVisualizationUI: ToolCallMessagePartComponent = memo(
 PrepareVisualizationUI.displayName = "PrepareVisualizationUI";
 
 export const RenderVisualizationUI: ToolCallMessagePartComponent = memo(
-  ({ argsText, result, status, toolCallId }) => {
-    const args = parseJson(argsText);
+  ({ result, status, toolCallId }) => {
     const out = parseJson(result);
+    const text =
+      out.rendered !== undefined
+        ? out.rendered
+          ? "rendered ✓"
+          : "render failed"
+        : undefined;
     return (
       <AgentToolGroup label="Render Visualization" status={status} toolCallId={toolCallId}>
-        <ToolRow
-          icon={<LayoutIcon className="size-3.5" />}
-          detail={trunc(args.componentType)}
-          result={
-            out.rendered !== undefined
-              ? out.rendered
-                ? "rendered ✓"
-                : "render failed"
-              : undefined
-          }
-          status={status}
-        />
+        {text ? <p className="px-1 text-xs text-muted-foreground/50">{text}</p> : null}
       </AgentToolGroup>
     );
   },
@@ -412,17 +379,15 @@ RenderVisualizationUI.displayName = "RenderVisualizationUI";
 // ─── Phase 4 – Review & Response ─────────────────────────────────────────────
 
 export const SummarizeResultUI: ToolCallMessagePartComponent = memo(
-  ({ argsText, result, status, toolCallId }) => {
-    const args = parseJson(argsText);
+  ({ result, status, toolCallId }) => {
     const out = parseJson(result);
     return (
       <AgentToolGroup label="Summarize Result" status={status} toolCallId={toolCallId}>
-        <ToolRow
-          icon={<ListIcon className="size-3.5" />}
-          detail={trunc(args.intent)}
-          result={out.summary ? trunc(out.summary, 80) : undefined}
-          status={status}
-        />
+        {out.summary ? (
+          <p className="px-1 text-xs text-muted-foreground/50 truncate">
+            {trunc(out.summary, 80)}
+          </p>
+        ) : null}
       </AgentToolGroup>
     );
   },
@@ -430,19 +395,15 @@ export const SummarizeResultUI: ToolCallMessagePartComponent = memo(
 SummarizeResultUI.displayName = "SummarizeResultUI";
 
 export const HumanReviewUI: ToolCallMessagePartComponent = memo(
-  ({ argsText, result, status, toolCallId }) => {
-    const args = parseJson(argsText);
+  ({ result, status, toolCallId }) => {
     const out = parseJson(result);
     return (
       <AgentToolGroup label="Human Review" status={status} toolCallId={toolCallId}>
-        <ToolRow
-          icon={
-            <AlertTriangleIcon className="size-3.5 text-amber-500 dark:text-amber-400" />
-          }
-          detail={`risk: ${args.riskLevel ?? "unknown"} · ${trunc(args.reason, 50)}`}
-          result={out.reviewNotes ? trunc(out.reviewNotes, 80) : undefined}
-          status={status}
-        />
+        {out.reviewNotes ? (
+          <p className="px-1 text-xs text-muted-foreground/50 truncate">
+            {trunc(out.reviewNotes, 80)}
+          </p>
+        ) : null}
       </AgentToolGroup>
     );
   },
@@ -450,25 +411,15 @@ export const HumanReviewUI: ToolCallMessagePartComponent = memo(
 HumanReviewUI.displayName = "HumanReviewUI";
 
 export const ComposeResponseUI: ToolCallMessagePartComponent = memo(
-  ({ argsText, result, status, toolCallId }) => {
-    const args = parseJson(argsText);
+  ({ result, status, toolCallId }) => {
     const out = parseJson(result);
-    const flags = [
-      args.hasSummary && "summary",
-      args.hasVisualization && "visualization",
-    ]
-      .filter(Boolean)
-      .join(" + ");
     return (
       <AgentToolGroup label="Compose Response" status={status} toolCallId={toolCallId}>
-        <ToolRow
-          icon={<PenLineIcon className="size-3.5" />}
-          detail={
-            flags ? `${trunc(args.intent, 40)} · ${flags}` : trunc(args.intent)
-          }
-          result={out.responseLength ? `${out.responseLength} chars` : undefined}
-          status={status}
-        />
+        {out.responseLength ? (
+          <p className="px-1 text-xs text-muted-foreground/50">
+            {String(out.responseLength)} chars
+          </p>
+        ) : null}
       </AgentToolGroup>
     );
   },
