@@ -35,7 +35,7 @@ describe('retrieve_context → answer_from_context (direct answer branch)', () =
 
   it('retrieve_context returns sufficient=true when ≥2 docs', async () => {
     const fn = retrieveTool.asTool().execute as Function;
-    const result = await fn({ query: 'What is NestJS?', mode: 'hybrid', maxDocuments: 5 });
+    const result = await fn({ query: 'What is NestJS?', mode: 'mix', topK: 5 });
     expect(result.sufficient).toBe(true);
     expect(result.documents.length).toBeGreaterThanOrEqual(2);
     expect(result.query).toBe('What is NestJS?');
@@ -43,7 +43,7 @@ describe('retrieve_context → answer_from_context (direct answer branch)', () =
 
   it('retrieve_context returns sufficient=false when maxDocuments=1', async () => {
     const fn = retrieveTool.asTool().execute as Function;
-    const result = await fn({ query: 'obscure query', mode: 'keyword', maxDocuments: 1 });
+    const result = await fn({ query: 'obscure query', mode: 'naive', topK: 1 });
     expect(result.sufficient).toBe(false);
   });
 

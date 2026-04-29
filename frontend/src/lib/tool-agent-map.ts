@@ -1,15 +1,20 @@
 /**
  * Maps tool names to the agent that owns them.
  * Reflects the minds-ai-agent pipeline (chat.service.ts / tool-registry.ts):
- *   Phase 1 – Context & Clarification  (retrieve_context, answer_from_context, clarification_request, generic_search, calculator)
+ *   Phase 0 – Intent & Strategy         (analyze_user_intent, strategy_decision)
+ *   Phase 1 – Context & Clarification  (retrieve_context, plan_next_step, clarification_request, generic_search, calculator)
  *   Phase 2 – SQL / Action             (generate_sql, validate_sql, execute_sql, generate_action, validate_action, execute_system_action)
- *   Phase 3 – Result & Visualization   (inspect_result, prepare_visualization_data, render_visualization)
+ *   Phase 3 – Result & Visualization   (inspect_result, decide_next_step, prepare_visualization_data, render_visualization)
  *   Phase 4 – Review & Response        (human_review_gate, summarize_result, compose_final_response)
  */
 const TOOL_AGENT_MAP: Record<string, string> = {
+  // Phase 0 – Intent & Strategy
+  analyze_user_intent: "Intent Analyzer",
+  strategy_decision: "Strategy Planner",
+
   // Phase 1 – Context & Clarification
   retrieve_context: "Context Retrieval Agent",
-  answer_from_context: "Context Retrieval Agent",
+  plan_next_step: "Task Planner",
   clarification_request: "Clarification Agent",
   generic_search: "Search Agent",
   calculator: "Calculator",
@@ -24,6 +29,7 @@ const TOOL_AGENT_MAP: Record<string, string> = {
 
   // Phase 3 – Result & Visualization
   inspect_result: "Result Inspector",
+  decide_next_step: "Decision Agent",
   prepare_visualization_data: "Visualization Agent",
   render_visualization: "Visualization Agent",
 

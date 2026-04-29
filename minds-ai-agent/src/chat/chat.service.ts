@@ -4,7 +4,8 @@ import { createUIMessageStream, pipeUIMessageStreamToResponse } from 'ai';
 import type { Response } from 'express';
 import { StateGraph, START, END, MemorySaver } from '@langchain/langgraph';
 import type { CompiledStateGraph } from '@langchain/langgraph';
-import { HumanMessage, AIMessage, SystemMessage } from '@langchain/core/messages';
+import { HumanMessage, SystemMessage } from '@langchain/core/messages';
+import type { RunnableConfig } from '@langchain/core/runnables';
 import * as z from 'zod';
 import { randomUUID } from 'node:crypto';
 import { ModelProvider } from './providers/model.provider';
@@ -110,15 +111,30 @@ async function llmJson<T>(
   system: string,
   user: string,
   schema: z.ZodType<T>,
+  config?: RunnableConfig,
 ): Promise<T> {
-  const res = await llm.invoke([
-    new SystemMessage(`${system}\n\nReply with a single JSON object only. No markdown fences.`),
-    new HumanMessage(user),
-  ]);
+  const res = await llm.invoke(
+    [
+      new SystemMessage(`${system}\n\nReply with a single JSON object only. No markdown fences.`),
+      new HumanMessage(user),
+    ],
+    config,
+  );
   const raw = typeof res.content === 'string' ? res.content : JSON.stringify(res.content);
   const match = raw.match(/\{[\s\S]*\}/);
   if (!match) throw new Error(`LLM did not return JSON. Got: ${raw.slice(0, 200)}`);
   return schema.parse(JSON.parse(match[0]));
+}
+
+function extractDelta(content: unknown): string {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return (content as Array<{ type?: string; text?: string }>)
+      .filter((b) => b.type === 'text' && b.text)
+      .map((b) => b.text!)
+      .join('');
+  }
+  return '';
 }
 
 // ─── Node Factories ────────────────────────────────────────────────────────────
@@ -126,7 +142,7 @@ async function llmJson<T>(
 function buildNodes(llm: LlmClient, tools: ToolMap, logger: PinoLogger) {
 
   // ── Analyze User Intent ──────────────────────────────────────────────────
-  async function analyzeUserIntent(state: AgentState): Promise<Partial<AgentState>> {
+  async function analyzeUserIntent(state: AgentState, config?: RunnableConfig): Promise<Partial<AgentState>> {
     const lastUser = [...state.messages].reverse().find((m) => m.role === 'user');
     const query = lastUser?.content ?? '';
     try {
@@ -135,6 +151,7 @@ function buildNodes(llm: LlmClient, tools: ToolMap, logger: PinoLogger) {
         'You are an intent-analysis assistant. Extract the user\'s core intent from their message. Use the JSON key "userIntent".',
         `User message: "${query}"`,
         IntentAnalysisSchema,
+        config,
       );
       return { userIntent: result.userIntent ?? query };
     } catch {
@@ -143,7 +160,7 @@ function buildNodes(llm: LlmClient, tools: ToolMap, logger: PinoLogger) {
   }
 
   // ── Strategy Decision ────────────────────────────────────────────────────
-  async function strategyDecision(state: AgentState): Promise<Partial<AgentState>> {
+  async function strategyDecision(state: AgentState, config?: RunnableConfig): Promise<Partial<AgentState>> {
     const VALID_STRATEGIES = ['direct', 'sql', 'system_tool', 'hybrid', 'unknown'] as const;
     return llmJson(
       llm,
@@ -160,6 +177,7 @@ function buildNodes(llm: LlmClient, tools: ToolMap, logger: PinoLogger) {
             return VALID_STRATEGIES.includes(norm) ? norm : 'unknown';
           }),
       }),
+      config,
     );
   }
 
@@ -167,8 +185,8 @@ function buildNodes(llm: LlmClient, tools: ToolMap, logger: PinoLogger) {
   async function retrieveContext(state: AgentState): Promise<Partial<AgentState>> {
     const result = (await callTool(tools, 'retrieve_context', {
       query: state.userIntent ?? state.messages.at(-1)?.content ?? '',
-      mode: 'hybrid',
-      maxDocuments: 5,
+      mode: 'mix',
+      topK: 10,
     })) as { documents: unknown[]; query: string; sufficient: boolean; contextSummary?: string };
 
     return {
@@ -178,7 +196,7 @@ function buildNodes(llm: LlmClient, tools: ToolMap, logger: PinoLogger) {
   }
 
   // ── Answer from LightRAG  (terminal — direct-context path) ───────────────
-  async function answerFromLightRAG(state: AgentState): Promise<Partial<AgentState>> {
+  async function answerFromLightRAG(state: AgentState, config?: RunnableConfig): Promise<Partial<AgentState>> {
     const documents = state.retrievedContext?.documents ?? [];
     const contextText = documents
       .map((d) => (d as Record<string, unknown>).content)
@@ -211,11 +229,11 @@ function buildNodes(llm: LlmClient, tools: ToolMap, logger: PinoLogger) {
       : `Question: ${state.userIntent}`;
 
     let finalResponse = '';
-    for await (const chunk of await llm.stream([
-      new SystemMessage(systemPrompt),
-      new HumanMessage(humanMessage),
-    ])) {
-      finalResponse += typeof chunk.content === 'string' ? chunk.content : '';
+    for await (const chunk of await llm.stream(
+      [new SystemMessage(systemPrompt), new HumanMessage(humanMessage)],
+      config,
+    )) {
+      finalResponse += extractDelta(chunk.content);
     }
 
     logger.info({ responseLength: finalResponse.length, responsePreview: finalResponse.slice(0, 300) }, 'answerFromLightRAG: LLM output');
@@ -223,7 +241,7 @@ function buildNodes(llm: LlmClient, tools: ToolMap, logger: PinoLogger) {
   }
 
   // ── Plan Next Step ───────────────────────────────────────────────────────
-  async function planNextStep(state: AgentState): Promise<Partial<AgentState>> {
+  async function planNextStep(state: AgentState, config?: RunnableConfig): Promise<Partial<AgentState>> {
     return llmJson(
       llm,
       'Plan the next step for fulfilling the user intent. ' +
@@ -237,22 +255,26 @@ function buildNodes(llm: LlmClient, tools: ToolMap, logger: PinoLogger) {
           .boolean()
           .describe('true ONLY if a specific required value is completely missing and cannot be assumed'),
       }),
+      config,
     );
   }
 
   // ── Disambiguate / Ask User  (terminal — clarification path) ────────────
-  async function disambiguateAskUser(state: AgentState): Promise<Partial<AgentState>> {
+  async function disambiguateAskUser(state: AgentState, config?: RunnableConfig): Promise<Partial<AgentState>> {
     let finalResponse = '';
-    for await (const chunk of await llm.stream([
-      new SystemMessage(
-        'Generate a concise, specific clarification question for the user. ' +
-          'Do not answer the question — only ask for the missing information.',
-      ),
-      new HumanMessage(
-        `Intent: "${state.userIntent}"\nPlan: "${state.currentPlan ?? 'none'}"`,
-      ),
-    ])) {
-      finalResponse += typeof chunk.content === 'string' ? chunk.content : '';
+    for await (const chunk of await llm.stream(
+      [
+        new SystemMessage(
+          'Generate a concise, specific clarification question for the user. ' +
+            'Do not answer the question — only ask for the missing information.',
+        ),
+        new HumanMessage(
+          `Intent: "${state.userIntent}"\nPlan: "${state.currentPlan ?? 'none'}"`,
+        ),
+      ],
+      config,
+    )) {
+      finalResponse += extractDelta(chunk.content);
     }
     return { finalResponse };
   }
@@ -372,7 +394,7 @@ function buildNodes(llm: LlmClient, tools: ToolMap, logger: PinoLogger) {
   }
 
   // ── Decide Next Step ─────────────────────────────────────────────────────
-  async function decideNextStep(state: AgentState): Promise<Partial<AgentState>> {
+  async function decideNextStep(state: AgentState, config?: RunnableConfig): Promise<Partial<AgentState>> {
     return llmJson(
       llm,
       'The task is not yet complete. Decide the next step. ' +
@@ -383,6 +405,7 @@ function buildNodes(llm: LlmClient, tools: ToolMap, logger: PinoLogger) {
       z.object({
         nextStepDecision: z.enum(['another_query', 'another_system', 'human_decision']),
       }),
+      config,
     );
   }
 
@@ -447,7 +470,7 @@ function buildNodes(llm: LlmClient, tools: ToolMap, logger: PinoLogger) {
   }
 
   // ── Compose Final Response ───────────────────────────────────────────────
-  async function composeFinalResponse(state: AgentState): Promise<Partial<AgentState>> {
+  async function composeFinalResponse(state: AgentState, config?: RunnableConfig): Promise<Partial<AgentState>> {
     const hasViz = Boolean(state.visualizationPayload);
     const contextLines = [
       `User intent: ${state.userIntent}`,
@@ -459,14 +482,17 @@ function buildNodes(llm: LlmClient, tools: ToolMap, logger: PinoLogger) {
       .join('\n');
 
     let finalResponse = '';
-    for await (const chunk of await llm.stream([
-      new SystemMessage(
-        'Compose a clear, helpful final response for the user. ' +
-          'Be concise and accurate. Do not repeat the intent back verbatim.',
-      ),
-      new HumanMessage(contextLines),
-    ])) {
-      finalResponse += typeof chunk.content === 'string' ? chunk.content : '';
+    for await (const chunk of await llm.stream(
+      [
+        new SystemMessage(
+          'Compose a clear, helpful final response for the user. ' +
+            'Be concise and accurate. Do not repeat the intent back verbatim.',
+        ),
+        new HumanMessage(contextLines),
+      ],
+      config,
+    )) {
+      finalResponse += extractDelta(chunk.content);
     }
     logger.info({ responseLength: finalResponse.length, responsePreview: finalResponse.slice(0, 300) }, 'composeFinalResponse: LLM output');
     return { finalResponse };
@@ -635,14 +661,18 @@ const STREAMING_NODES = new Set([
 // SQL vs action paths are resolved dynamically so the correct tool is highlighted.
 function resolveToolName(nodeName: string, state: AgentState): string | undefined {
   switch (nodeName) {
+    case 'analyzeUserIntent':         return 'analyze_user_intent';
+    case 'strategyDecision':          return 'strategy_decision';
     case 'retrieveContext':           return 'retrieve_context';
-    case 'answerFromLightRAG':        return 'answer_from_context';
+    case 'planNextStep':              return 'plan_next_step';
+    // answerFromLightRAG streams directly to the main message — no separate tool group
     case 'disambiguateAskUser':       return 'clarification_request';
     case 'generateSqlOrToolCall':     return state.strategy === 'sql' ? 'generate_sql' : 'generate_action';
     case 'validateSqlAction':         return state.generatedSql ? 'validate_sql' : 'validate_action';
     case 'executeSqlCallSystem':      return state.generatedSql ? 'execute_sql' : 'execute_system_action';
     case 'callExternalSystem':        return 'execute_system_action';
     case 'inspectResult':             return 'inspect_result';
+    case 'decideNextStep':            return 'decide_next_step';
     case 'populateVisualizationData': return 'prepare_visualization_data';
     case 'renderVisualization':       return 'render_visualization';
     case 'summarizeResult':           return 'summarize_result';
@@ -652,11 +682,65 @@ function resolveToolName(nodeName: string, state: AgentState): string | undefine
   }
 }
 
+// Returns a human-readable status message streamed into the tool group immediately
+// when a node starts, so no tool group is ever blank during execution.
+function resolveStartingMessage(nodeName: string, state: AgentState): string {
+  const intent = state.userIntent ? `"${state.userIntent}"` : 'the request';
+  switch (nodeName) {
+    case 'analyzeUserIntent':
+      return `Reading message and extracting intent…`;
+    case 'strategyDecision':
+      return `Selecting execution strategy for ${intent}…`;
+    case 'retrieveContext':
+      return `Searching knowledge base for ${intent}…`;
+    case 'planNextStep':
+      return `Planning next action for ${intent} via ${state.strategy ?? 'unknown'} strategy…`;
+    case 'disambiguateAskUser':
+      return `Generating clarification question for ${intent}…`;
+    case 'generateSqlOrToolCall':
+      return state.strategy === 'sql'
+        ? `Generating SQL query for ${intent}…`
+        : `Generating tool call for ${intent}…`;
+    case 'validateSqlAction':
+      return state.generatedSql
+        ? `Validating SQL query safety and correctness…`
+        : `Validating action parameters…`;
+    case 'executeSqlCallSystem':
+      return state.generatedSql
+        ? `Executing SQL against the database…`
+        : `Executing system action…`;
+    case 'callExternalSystem':
+      return `Calling external system for ${intent}…`;
+    case 'inspectResult':
+      return `Inspecting execution result for completeness…`;
+    case 'decideNextStep':
+      return `Evaluating result and deciding next step…`;
+    case 'populateVisualizationData':
+      return `Preparing data for visualization…`;
+    case 'renderVisualization':
+      return `Rendering ${state.visualizationComponentType ?? 'visualization'} component…`;
+    case 'summarizeResult':
+      return `Summarizing result for ${intent}…`;
+    case 'humanReview':
+      return `Flagging for human review — risk level: ${state.isUnsafe ? 'high' : 'medium'}…`;
+    case 'composeFinalResponse':
+      return `Composing final response for ${intent}…`;
+    default:
+      return `Processing…`;
+  }
+}
+
 function extractNodeArgs(nodeName: string, state: AgentState): Record<string, unknown> {
   const action = state.generatedAction as Record<string, unknown> | undefined;
   switch (nodeName) {
+    case 'analyzeUserIntent':
+      return { query: state.messages.at(-1)?.content ?? '' };
+    case 'strategyDecision':
+      return { intent: state.userIntent };
     case 'retrieveContext':
-      return { query: state.userIntent ?? state.messages.at(-1)?.content ?? '', mode: 'hybrid', strategy: state.strategy };
+      return { query: state.userIntent ?? state.messages.at(-1)?.content ?? '', mode: 'mix', strategy: state.strategy };
+    case 'planNextStep':
+      return { intent: state.userIntent, strategy: state.strategy };
     case 'answerFromLightRAG':
       return { intent: state.userIntent, documentCount: state.retrievedContext?.documents?.length ?? 0, enoughContext: state.enoughContext };
     case 'disambiguateAskUser':
@@ -677,6 +761,8 @@ function extractNodeArgs(nodeName: string, state: AgentState): Record<string, un
       return { intent: state.userIntent, hasPreviousResult: state.executionResult !== undefined };
     case 'inspectResult':
       return { intent: state.userIntent, hasResult: state.executionResult !== undefined };
+    case 'decideNextStep':
+      return { intent: state.userIntent, hasResult: state.executionResult !== undefined };
     case 'populateVisualizationData':
       return { hasResult: state.executionResult !== undefined, dataShape: state.inspectionDataShape };
     case 'renderVisualization':
@@ -696,6 +782,14 @@ function summarizeNodeOutput(nodeName: string, output: Partial<AgentState>): unk
   const genAction = output.generatedAction as Record<string, unknown> | undefined;
   const vizPayload = output.visualizationPayload as Record<string, unknown> | undefined;
   switch (nodeName) {
+    case 'analyzeUserIntent':
+      return { userIntent: output.userIntent };
+    case 'strategyDecision':
+      return { strategy: output.strategy };
+    case 'planNextStep':
+      return { currentPlan: output.currentPlan, needsUserInput: output.needsUserInput };
+    case 'decideNextStep':
+      return { nextStepDecision: output.nextStepDecision };
     case 'retrieveContext': {
       const docs = output.retrievedContext?.documents ?? [];
       const items = docs.map((d) => ({
@@ -829,14 +923,11 @@ export class ChatService implements OnModuleInit {
                 this.logger.info({ threadId, toolName, input }, 'Tool node executing');
                 writer.write({ type: 'tool-input-available', toolCallId, toolName, input });
 
-                // Emit an initial streaming delta for retrieve_context so the
-                // frontend has something to show while LightRAG is being queried.
-                if (toolName === 'retrieve_context' && input.query) {
-                  const query = String(input.query);
-                  const mode = input.mode ? ` (${String(input.mode)})` : '';
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  writer.write({ type: 'tool-output-delta', toolCallId, delta: `Searching knowledge base${mode} for: "${query}"…` } as any);
-                }
+                // Emit a descriptive starting message for every tool group so
+                // no group is ever blank while the node is executing.
+                const startMsg = resolveStartingMessage(event.name, nodeState ?? ({} as AgentState));
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                writer.write({ type: 'tool-output-delta', toolCallId, delta: startMsg } as any);
               }
             }
 
@@ -849,11 +940,6 @@ export class ChatService implements OnModuleInit {
               const output = event.data?.output as Partial<AgentState> | undefined;
               const summary = summarizeNodeOutput(event.name, output ?? {});
               this.logger.info({ threadId, node: event.name, toolName, summary }, 'Tool node result');
-              const deltaText = typeof summary === 'string'
-                ? summary
-                : JSON.stringify(summary, null, 2);
-              // tool-output-delta is intercepted by streaming-fetch.ts before the AI SDK sees it
-              writer.write({ type: 'tool-output-delta', toolCallId, delta: deltaText } as any);
               writer.write({ type: 'tool-output-available', toolCallId, output: summary });
             }
 
@@ -877,8 +963,9 @@ export class ChatService implements OnModuleInit {
                   writer.write({ type: 'text-delta', id, delta });
                 }
 
-                // Route into tool group UI for all tracked nodes
-                if (toolCallIds.has(nodeName)) {
+                // Route into tool group UI only for streaming nodes — LLM-JSON nodes
+                // produce internal JSON tokens that are meaningless to display.
+                if (toolCallIds.has(nodeName) && STREAMING_NODES.has(nodeName)) {
                   const toolCallId = toolCallIds.get(nodeName)!;
                   writer.write({ type: 'tool-output-delta', toolCallId, delta } as any);
                 }

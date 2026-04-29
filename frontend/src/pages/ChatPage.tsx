@@ -24,23 +24,26 @@ import {
   Shadcn,
 } from "@/components/assistant-ui/shadcn";
 import {
-  AnswerFromContextUI,
-  CalculatorUI,
+  AnalyzeIntentUI,
+  StrategyDecisionUI,
+  RetrieveContextUI,
+  PlanNextStepUI,
   ClarificationRequestUI,
-  ComposeResponseUI,
-  ExecuteSqlUI,
-  ExecuteSystemActionUI,
-  GenerateActionUI,
-  GenerateSqlUI,
   GenericSearchUI,
-  HumanReviewUI,
+  CalculatorUI,
+  GenerateSqlUI,
+  ValidateSqlUI,
+  ExecuteSqlUI,
+  GenerateActionUI,
+  ValidateActionUI,
+  ExecuteSystemActionUI,
   InspectResultUI,
+  DecideNextStepUI,
   PrepareVisualizationUI,
   RenderVisualizationUI,
-  RetrieveContextUI,
+  HumanReviewUI,
   SummarizeResultUI,
-  ValidateActionUI,
-  ValidateSqlUI,
+  ComposeResponseUI,
 } from "@/components/agent-tool-uis";
 import { registry } from "@/lib/registry";
 import { createStreamingFetch } from "@/lib/streaming-fetch";
@@ -95,9 +98,12 @@ const ChatAssistantMessage: FC = () => {
             Text: MarkdownText,
             tools: {
               by_name: {
+                // Phase 0 – Intent & Strategy
+                analyze_user_intent:        AnalyzeIntentUI,
+                strategy_decision:          StrategyDecisionUI,
                 // Phase 1 – Context & Clarification
                 retrieve_context:           RetrieveContextUI,
-                answer_from_context:        AnswerFromContextUI,
+                plan_next_step:             PlanNextStepUI,
                 clarification_request:      ClarificationRequestUI,
                 generic_search:             GenericSearchUI,
                 calculator:                 CalculatorUI,
@@ -110,6 +116,7 @@ const ChatAssistantMessage: FC = () => {
                 execute_system_action:      ExecuteSystemActionUI,
                 // Phase 3 – Result & Visualization
                 inspect_result:             InspectResultUI,
+                decide_next_step:           DecideNextStepUI,
                 prepare_visualization_data: PrepareVisualizationUI,
                 render_visualization:       RenderVisualizationUI,
                 // Phase 4 – Review & Response

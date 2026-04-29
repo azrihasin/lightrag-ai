@@ -3,7 +3,7 @@ import { InjectPinoLogger, PinoLogger } from 'nestjs-pino';
 import { tool } from 'ai';
 import { z } from 'zod';
 
-const LIGHTRAG_API_URL = process.env.LIGHTRAG_API_URL ?? 'http://localhost:9621';
+const LIGHTRAG_API_URL = process.env.LIGHTRAG_API_URL ?? 'http://localhost:5174';
 
 @Injectable()
 export class RetrieveContextTool {
@@ -19,123 +19,137 @@ export class RetrieveContextTool {
         'Retrieve relevant context from the LightRAG knowledge base. Always call this first before any other tool.',
       inputSchema: z.object({
         query: z.string().describe('The user query or intent to retrieve context for'),
-        mode: z.enum(['semantic', 'hybrid', 'keyword']).optional().default('hybrid'),
-        maxDocuments: z.number().int().min(1).max(10).optional().default(5),
+        mode: z
+          .enum(['local', 'global', 'hybrid', 'naive', 'mix', 'bypass'])
+          .optional()
+          .default('mix'),
+        topK: z.number().int().min(1).max(20).optional().default(10),
       }),
-      execute: async ({ query, mode, maxDocuments }) => {
-        logger.info({ query, mode, maxDocuments, url: LIGHTRAG_API_URL }, 'Querying LightRAG');
+      execute: async ({ query, mode, topK }) => {
+        logger.info({ query, mode, topK, url: LIGHTRAG_API_URL }, 'Querying LightRAG /query/stream');
 
-        // ── /retrieval endpoint (raw chunks) ───────────────────────────────
         try {
-          const retrievalRes = await fetch(`${LIGHTRAG_API_URL}/retrieval`, {
+          const res = await fetch(`${LIGHTRAG_API_URL}/query/stream`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ query, mode: mode ?? 'hybrid', top_k: maxDocuments ?? 5 }),
+            body: JSON.stringify({
+              query,
+              mode: mode ?? 'mix',
+              stream: true,
+              include_references: true,
+              top_k: topK ?? 10,
+            }),
           });
 
-          if (retrievalRes.ok) {
-            const raw = await retrievalRes.text();
-            logger.debug({ endpoint: '/retrieval', rawLength: raw.length, raw: raw.slice(0, 500) }, 'LightRAG raw response');
-
-            const data = JSON.parse(raw) as {
-              status?: string;
-              data?: {
-                chunks?: Array<{ id?: string; content: string; score?: number; source?: string }>;
-                entities?: Array<{ entity_name?: string; description?: string }>;
-              };
+          if (!res.ok) {
+            const errText = await res.text().catch(() => '');
+            logger.warn({ query, status: res.status, errText }, 'LightRAG /query/stream non-OK');
+            return {
+              documents: [],
+              query,
+              mode,
+              sufficient: false,
+              contextSummary: `LightRAG returned HTTP ${res.status}.`,
             };
-
-            const chunks = data?.data?.chunks ?? [];
-            const entities = data?.data?.entities ?? [];
-
-            const entityDocs = entities.slice(0, 3).map((e, i) => ({
-              id: `entity-${i + 1}`,
-              title: e.entity_name ?? `Entity ${i + 1}`,
-              content: e.description ?? '',
-              score: 0.8,
-              source: 'lightrag/entity',
-            }));
-
-            const documents = [
-              ...chunks.map((c, i) => ({
-                id: c.id ?? `chunk-${i + 1}`,
-                title: `Document ${i + 1}`,
-                content: c.content,
-                score: c.score ?? 1.0,
-                source: c.source ?? `lightrag/${mode}/${i + 1}`,
-              })),
-              ...entityDocs,
-            ].slice(0, maxDocuments ?? 5);
-
-            const sufficient = documents.length > 0;
-            logger.info({ query, documentCount: documents.length, sufficient, endpoint: '/retrieval' }, 'LightRAG retrieval succeeded');
-            return { documents, query, mode, sufficient, contextSummary: sufficient ? `Found ${documents.length} document(s).` : 'No documents found.' };
           }
 
-          logger.warn({ query, status: retrievalRes.status, endpoint: '/retrieval' }, 'LightRAG /retrieval non-OK');
-        } catch (err) {
-          logger.warn({ query, err, endpoint: '/retrieval' }, 'LightRAG /retrieval failed');
-        }
+          // Read the full NDJSON body and split by newline
+          const rawBody = await res.text();
+          logger.debug({ rawLength: rawBody.length, preview: rawBody.slice(0, 500) }, 'LightRAG stream raw body');
 
-        // ── /query endpoint (answer text) ──────────────────────────────────
-        try {
-          const queryRes = await fetch(`${LIGHTRAG_API_URL}/query`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ query, mode: mode ?? 'hybrid', top_k: maxDocuments ?? 5 }),
+          const lines = rawBody.split('\n').map(l => l.trim()).filter(Boolean);
+
+          let references: Array<{ reference_id: string; file_path: string }> = [];
+          const responseChunks: string[] = [];
+          let streamError: string | undefined;
+
+          for (const line of lines) {
+            try {
+              const obj = JSON.parse(line) as {
+                references?: Array<{ reference_id: string; file_path: string }>;
+                response?: string;
+                error?: string;
+              };
+
+              if (obj.references) {
+                references = obj.references;
+              } else if (typeof obj.response === 'string') {
+                responseChunks.push(obj.response);
+              } else if (typeof obj.error === 'string') {
+                streamError = obj.error;
+                logger.warn({ query, streamError }, 'LightRAG stream error object');
+              }
+            } catch {
+              logger.debug({ line }, 'LightRAG stream: skipping non-JSON line');
+            }
+          }
+
+          const fullResponse = responseChunks.join('').trim();
+
+          if (streamError && !fullResponse) {
+            return {
+              documents: [],
+              query,
+              mode,
+              sufficient: false,
+              contextSummary: `LightRAG error: ${streamError}`,
+            };
+          }
+
+          // Build documents: the synthesized answer + one entry per reference
+          const documents: Array<{
+            id: string;
+            title: string;
+            content: string;
+            score: number;
+            source: string;
+          }> = [];
+
+          if (fullResponse) {
+            documents.push({
+              id: 'lightrag-answer',
+              title: 'LightRAG Knowledge Base Answer',
+              content: fullResponse,
+              score: 1.0,
+              source: `lightrag/${mode}/stream`,
+            });
+          }
+
+          references.forEach((ref) => {
+            documents.push({
+              id: `ref-${ref.reference_id}`,
+              title: `Reference ${ref.reference_id}`,
+              content: ref.file_path,
+              score: 0.9,
+              source: ref.file_path,
+            });
           });
 
-          if (queryRes.ok) {
-            const raw = await queryRes.text();
-            logger.debug({ endpoint: '/query', rawLength: raw.length, raw: raw.slice(0, 500) }, 'LightRAG raw response');
+          const sufficient = documents.length > 0;
+          logger.info(
+            { query, answerLength: fullResponse.length, referenceCount: references.length, sufficient },
+            'LightRAG /query/stream succeeded',
+          );
 
-            // LightRAG may return plain text or JSON — handle both
-            let answer = '';
-            try {
-              const data = JSON.parse(raw) as { status?: string; data?: unknown; response?: unknown; result?: unknown };
-              // Unwrap whichever field contains the answer string
-              const candidate = data?.data ?? data?.response ?? data?.result ?? data;
-              answer = typeof candidate === 'string' ? candidate : raw;
-            } catch {
-              // Response is plain text
-              answer = raw;
-            }
-
-            answer = answer.trim();
-            logger.info({ query, answerLength: answer.length, answerPreview: answer.slice(0, 200), endpoint: '/query' }, 'LightRAG /query result');
-
-            if (answer.length > 0) {
-              return {
-                documents: [{
-                  id: 'lightrag-answer',
-                  title: 'LightRAG Knowledge Base',
-                  content: answer,
-                  score: 1.0,
-                  source: `lightrag/${mode}/query`,
-                }],
-                query,
-                mode,
-                sufficient: true,
-                contextSummary: 'Retrieved answer from LightRAG knowledge base.',
-              };
-            }
-
-            logger.warn({ query, endpoint: '/query' }, 'LightRAG /query returned empty answer');
-          } else {
-            logger.warn({ query, status: queryRes.status, endpoint: '/query' }, 'LightRAG /query non-OK');
-          }
+          return {
+            documents,
+            query,
+            mode,
+            sufficient,
+            contextSummary: sufficient
+              ? `Retrieved answer (${fullResponse.length} chars) with ${references.length} reference(s).`
+              : 'LightRAG returned no results.',
+          };
         } catch (err) {
-          logger.warn({ query, err, endpoint: '/query' }, 'LightRAG /query failed');
+          logger.error({ query, err }, 'LightRAG /query/stream request failed');
+          return {
+            documents: [],
+            query,
+            mode,
+            sufficient: false,
+            contextSummary: 'LightRAG request failed.',
+          };
         }
-
-        logger.warn({ query }, 'LightRAG returned no usable results — agent will use general knowledge');
-        return {
-          documents: [],
-          query,
-          mode,
-          sufficient: false,
-          contextSummary: 'LightRAG returned no results.',
-        };
       },
     });
   }
