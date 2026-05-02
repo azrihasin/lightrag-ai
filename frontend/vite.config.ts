@@ -10,6 +10,9 @@ export default defineConfig({
     proxy: {
       "/api": "http://localhost:9621",
     },
+    watch: {
+      ignored: ["**/.claude/**"],
+    },
   },
   resolve: {
     alias: {

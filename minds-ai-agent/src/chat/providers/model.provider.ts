@@ -26,12 +26,12 @@ export class ModelProvider implements OnModuleInit {
     return openai(modelId);
   }
 
-  getChatModel(): BaseChatModel {
+  getChatModel(tags?: string[]): BaseChatModel {
     const provider = process.env.AI_PROVIDER ?? this.provider;
     const modelId = process.env.AI_MODEL ?? this.modelId;
     if (provider === 'anthropic') {
-      return new ChatAnthropic({ model: modelId });
+      return new ChatAnthropic({ model: modelId, tags });
     }
-    return new ChatOpenAI({ model: modelId });
+    return new ChatOpenAI({ model: modelId, tags });
   }
 }
