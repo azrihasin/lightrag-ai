@@ -15,6 +15,11 @@ import {
 } from "@json-render/react";
 import { MarkdownText } from "@/components/assistant-ui/markdown-text";
 import { ToolFallback } from "@/components/assistant-ui/tool-fallback";
+import {
+  ReasoningRoot,
+  ReasoningTrigger,
+  ReasoningContent,
+} from "@/components/assistant-ui/reasoning";
 import { getAgentForTool } from "@/lib/tool-agent-map";
 import type { ToolCallMessagePartComponent } from "@assistant-ui/react";
 import {
@@ -25,6 +30,7 @@ import {
 } from "@/components/assistant-ui/shadcn";
 import {
   AnalyzeIntentUI,
+  AgentToolTimeline,
   StrategyDecisionUI,
   RetrieveContextUI,
   PlanNextStepUI,
@@ -63,8 +69,37 @@ const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:3000/api/chat"
 
 // ─── Assistant message ────────────────────────────────────────────────────────
 
+const toolsByName = {
+  analyze_user_intent:        AnalyzeIntentUI,
+  strategy_decision:          StrategyDecisionUI,
+  retrieve_context:           RetrieveContextUI,
+  plan_next_step:             PlanNextStepUI,
+  clarification_request:      ClarificationRequestUI,
+  generic_search:             GenericSearchUI,
+  calculator:                 CalculatorUI,
+  generate_sql:               GenerateSqlUI,
+  validate_sql:               ValidateSqlUI,
+  execute_sql:                ExecuteSqlUI,
+  generate_action:            GenerateActionUI,
+  validate_action:            ValidateActionUI,
+  execute_system_action:      ExecuteSystemActionUI,
+  inspect_result:             InspectResultUI,
+  decide_next_step:           DecideNextStepUI,
+  prepare_visualization_data: PrepareVisualizationUI,
+  render_visualization:       RenderVisualizationUI,
+  human_review_gate:          HumanReviewUI,
+  summarize_result:           SummarizeResultUI,
+  compose_final_response:     ComposeResponseUI,
+} as const;
+
+const NoOp = () => null;
+
 const ChatAssistantMessage: FC = () => {
   const parts = useAuiState((s) => s.message.parts);
+  const messageStatus = useAuiState((s) => s.message.status);
+  const isRunning = (messageStatus as { type?: string } | undefined)?.type === "running";
+
+  const hasToolParts = parts.some((p) => p.type === "tool-call");
 
   const jsonRenderParts = useMemo(
     (): DataPart[] =>
@@ -93,41 +128,29 @@ const ChatAssistantMessage: FC = () => {
       data-role="assistant"
     >
       <div className="aui-assistant-message-content wrap-break-word px-2 text-foreground leading-relaxed">
+        {hasToolParts && (
+          <ReasoningRoot variant="ghost" defaultOpen>
+            <ReasoningTrigger active={isRunning} />
+            <ReasoningContent>
+              <AgentToolTimeline>
+                <MessagePrimitive.Parts
+                  components={{
+                    Text: NoOp,
+                    tools: { by_name: toolsByName, Fallback: ToolFallbackWithAgent },
+                  }}
+                />
+              </AgentToolTimeline>
+            </ReasoningContent>
+          </ReasoningRoot>
+        )}
+
         <MessagePrimitive.Parts
           components={{
             Text: MarkdownText,
-            tools: {
-              by_name: {
-                // Phase 0 – Intent & Strategy
-                analyze_user_intent:        AnalyzeIntentUI,
-                strategy_decision:          StrategyDecisionUI,
-                // Phase 1 – Context & Clarification
-                retrieve_context:           RetrieveContextUI,
-                plan_next_step:             PlanNextStepUI,
-                clarification_request:      ClarificationRequestUI,
-                generic_search:             GenericSearchUI,
-                calculator:                 CalculatorUI,
-                // Phase 2 – SQL / Action
-                generate_sql:               GenerateSqlUI,
-                validate_sql:               ValidateSqlUI,
-                execute_sql:                ExecuteSqlUI,
-                generate_action:            GenerateActionUI,
-                validate_action:            ValidateActionUI,
-                execute_system_action:      ExecuteSystemActionUI,
-                // Phase 3 – Result & Visualization
-                inspect_result:             InspectResultUI,
-                decide_next_step:           DecideNextStepUI,
-                prepare_visualization_data: PrepareVisualizationUI,
-                render_visualization:       RenderVisualizationUI,
-                // Phase 4 – Review & Response
-                human_review_gate:          HumanReviewUI,
-                summarize_result:           SummarizeResultUI,
-                compose_final_response:     ComposeResponseUI,
-              },
-              Fallback: ToolFallbackWithAgent,
-            },
+            tools: { Fallback: NoOp },
           }}
         />
+
         {hasSpec && spec && <Renderer spec={spec} registry={registry} />}
         <MessageError />
       </div>
