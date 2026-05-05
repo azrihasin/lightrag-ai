@@ -1,8 +1,21 @@
 "use client";
 
-import { memo, type ReactNode } from "react";
+import { memo, useMemo, type ReactNode } from "react";
 import type { ToolCallMessagePartComponent } from "@assistant-ui/react";
 import { useToolOutputStreamStore } from "@/lib/tool-output-stream";
+import { useSqlTableStreamStore } from "@/lib/sql-table-stream";
+import { useSqlGeneratedStore } from "@/lib/sql-generated-store";
+import { FileTextIcon } from "lucide-react";
+import { cn } from "@/lib/utils";
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableFooter,
+  TableRow,
+  TableHead,
+  TableCell,
+} from "@/components/ui/table";
 import {
   Timeline,
   TimelineContent,
@@ -76,6 +89,14 @@ function AgentToolGroup({ label, toolCallId, children }: AgentToolGroupProps) {
 
 // ─── Retrieve Context — rich streaming display ────────────────────────────────
 
+type LightRagDocument = {
+  id: string;
+  title: string;
+  content: string;
+  score: number;
+  source: string;
+};
+
 function RetrieveContextStream({
   status,
   result,
@@ -86,39 +107,47 @@ function RetrieveContextStream({
   const isRunning = status?.type === "running";
   const out = parseJson(result);
 
-  if (!isRunning && result) {
-    const rawSources = out.sources;
-    const sources: string[] = Array.isArray(rawSources)
-      ? (rawSources as unknown[]).map((s) => String(s))
-      : [];
+  if (isRunning || !result) return null;
 
-    if (sources.length === 0) return null;
+  const documents = Array.isArray(out.documents)
+    ? (out.documents as LightRagDocument[])
+    : [];
 
-    return (
-      <div className="mt-1.5 px-1">
-        <div className="flex flex-wrap gap-1">
-          <span className="self-center text-xs text-muted-foreground/40 mr-0.5">
-            sources:
-          </span>
-          {sources.slice(0, 8).map((src, i) => (
+  const answer = documents.find((d) => d.id === "lightrag-answer");
+  const refs = documents.filter((d) => d.id !== "lightrag-answer");
+
+  if (!answer && refs.length === 0) return null;
+
+  return (
+    <div className="mt-2 flex flex-col gap-2">
+      {answer && (
+        <div className="overflow-hidden rounded-md border border-border bg-muted/40">
+          <div className="border-b border-border px-3 py-1.5">
+            <span className="text-xs font-medium text-muted-foreground">Retrieved Context</span>
+          </div>
+          <pre className="overflow-x-auto p-3 text-xs leading-relaxed text-foreground whitespace-pre-wrap">
+            <code>{answer.content}</code>
+          </pre>
+        </div>
+      )}
+
+      {refs.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {refs.map((ref, i) => (
             <span
               key={i}
-              className="inline-flex items-center rounded-md bg-muted px-2 py-0.5 text-xs font-mono text-muted-foreground ring-1 ring-inset ring-muted-foreground/20"
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-md border border-border/50 bg-muted/30 px-2.5 py-1.5 text-xs text-muted-foreground",
+              )}
             >
-              {src}
+              <FileTextIcon className="size-3 shrink-0" />
+              <span className="truncate max-w-[200px] font-mono">{ref.source}</span>
             </span>
           ))}
-          {sources.length > 8 && (
-            <span className="self-center text-xs text-muted-foreground/40">
-              +{sources.length - 8} more
-            </span>
-          )}
         </div>
-      </div>
-    );
-  }
-
-  return null;
+      )}
+    </div>
+  );
 }
 
 // ─── Phase 0 – Intent & Strategy ─────────────────────────────────────────────
@@ -176,11 +205,154 @@ export const CalculatorUI: ToolCallMessagePartComponent = memo(
 );
 CalculatorUI.displayName = "CalculatorUI";
 
+// ─── SQL result table ─────────────────────────────────────────────────────────
+
+function SqlResultTable({
+  toolCallId,
+  result,
+  status,
+}: {
+  toolCallId: string;
+  result?: string;
+  status: StatusType;
+}) {
+  const isRunning = status?.type === "running";
+  const tableData = useSqlTableStreamStore((s) => s.tables[toolCallId] ?? null);
+
+  const errorMessage = useMemo<string | null>(() => {
+    if (!result || typeof result !== "string") return null;
+    try {
+      const parsed = JSON.parse(result) as Record<string, unknown>;
+      if (parsed.success === false && typeof parsed.error === "string") {
+        return parsed.error;
+      }
+    } catch {
+      // not an error JSON
+    }
+    return null;
+  }, [result]);
+
+  if (errorMessage) {
+    return (
+      <div className="mt-1 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+        {errorMessage}
+      </div>
+    );
+  }
+
+  if (!tableData || tableData.columns.length === 0) {
+    if (isRunning) {
+      return (
+        <div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
+          <span className="inline-block h-3 w-1.5 animate-pulse bg-current opacity-50" />
+          Running query…
+        </div>
+      );
+    }
+    return null;
+  }
+
+  const rowCount = tableData.rowCount ?? tableData.rows.length;
+
+  return (
+    <div className="mt-2 rounded-md border overflow-hidden">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            {tableData.columns.map((col) => (
+              <TableHead key={col}>{col}</TableHead>
+            ))}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {tableData.rows.length === 0 && tableData.isComplete ? (
+            <TableRow>
+              <TableCell
+                colSpan={tableData.columns.length}
+                className="py-4 text-center text-muted-foreground"
+              >
+                No rows returned
+              </TableCell>
+            </TableRow>
+          ) : (
+            tableData.rows.map((row, i) => (
+              <TableRow key={i}>
+                {tableData.columns.map((col) => {
+                  const cell = row[col];
+                  return (
+                    <TableCell key={col}>
+                      {cell === null || cell === undefined ? (
+                        <span className="italic text-muted-foreground">NULL</span>
+                      ) : (
+                        String(cell)
+                      )}
+                    </TableCell>
+                  );
+                })}
+              </TableRow>
+            ))
+          )}
+          {isRunning && tableData.rows.length > 0 && (
+            <TableRow>
+              <TableCell colSpan={tableData.columns.length} className="py-1">
+                <span className="inline-block h-3 w-1.5 animate-pulse bg-current opacity-50" />
+              </TableCell>
+            </TableRow>
+          )}
+        </TableBody>
+        {tableData.isComplete && (
+          <TableFooter>
+            <TableRow>
+              <TableCell
+                colSpan={tableData.columns.length}
+                className="text-xs text-muted-foreground"
+              >
+                {rowCount} {rowCount === 1 ? "row" : "rows"}
+              </TableCell>
+            </TableRow>
+          </TableFooter>
+        )}
+      </Table>
+    </div>
+  );
+}
+
 // ─── Phase 2 – SQL / Action ───────────────────────────────────────────────────
+
+function SqlCodeBlock({ toolCallId, status }: { toolCallId: string; status: StatusType }) {
+  const entry = useSqlGeneratedStore((s) => s.queries[toolCallId] ?? null);
+  const isRunning = status?.type === "running";
+
+  if (!entry) {
+    if (isRunning) {
+      return (
+        <div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
+          <span className="inline-block h-3 w-1.5 animate-pulse bg-current opacity-50" />
+          Generating query…
+        </div>
+      );
+    }
+    return null;
+  }
+
+  return (
+    <div className="mt-2 overflow-hidden rounded-md border border-border bg-muted/40">
+      <div className="flex items-center justify-between border-b border-border px-3 py-1.5">
+        <span className="text-xs font-medium text-muted-foreground">SQL</span>
+        <span className="text-xs text-muted-foreground/60">{entry.dialect}</span>
+      </div>
+      <pre className="overflow-x-auto p-3 text-xs leading-relaxed text-foreground">
+        <code>{entry.sql}</code>
+      </pre>
+    </div>
+  );
+}
 
 export const GenerateSqlUI: ToolCallMessagePartComponent = memo(
   ({ status, toolCallId }) => (
-    <AgentToolGroup label="Generate SQL" status={status} toolCallId={toolCallId} />
+    <AgentToolGroup label="Generate SQL" status={status} toolCallId={toolCallId}>
+      <SqlCodeBlock toolCallId={toolCallId} status={status} />
+    </AgentToolGroup>
   ),
 );
 GenerateSqlUI.displayName = "GenerateSqlUI";
@@ -193,8 +365,10 @@ export const ValidateSqlUI: ToolCallMessagePartComponent = memo(
 ValidateSqlUI.displayName = "ValidateSqlUI";
 
 export const ExecuteSqlUI: ToolCallMessagePartComponent = memo(
-  ({ status, toolCallId }) => (
-    <AgentToolGroup label="Execute SQL" status={status} toolCallId={toolCallId} />
+  ({ status, toolCallId, result }) => (
+    <AgentToolGroup label="Execute SQL" status={status} toolCallId={toolCallId}>
+      <SqlResultTable toolCallId={toolCallId} result={result} status={status} />
+    </AgentToolGroup>
   ),
 );
 ExecuteSqlUI.displayName = "ExecuteSqlUI";

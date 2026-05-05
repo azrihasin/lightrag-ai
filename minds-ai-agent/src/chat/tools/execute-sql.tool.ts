@@ -1,9 +1,14 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject } from '@nestjs/common';
 import { tool } from 'ai';
 import { z } from 'zod';
+import { sql } from 'drizzle-orm';
+import { MySql2Database } from 'drizzle-orm/mysql2';
+import { DRIZZLE } from '../../database/database.module';
 
 @Injectable()
 export class ExecuteSqlTool {
+  constructor(@Inject(DRIZZLE) private readonly db: MySql2Database) {}
+
   asTool() {
     return tool({
       description:
@@ -13,19 +18,17 @@ export class ExecuteSqlTool {
         sql: z.string(),
         params: z.record(z.string(), z.unknown()).optional(),
       }),
-      execute: async ({ actionId, sql }) => {
+      execute: async ({ actionId, sql: rawSql }) => {
         const t0 = Date.now();
-        // Stub: replace with real DB client
-        const columns = ['id', 'name', 'value', 'created_at'];
-        const rows = Array.from({ length: 5 }, (_, i) => ({
-          id: i + 1,
-          name: `Record ${i + 1}`,
-          value: Math.round(Math.random() * 1000),
-          created_at: new Date(Date.now() - i * 86_400_000).toISOString().split('T')[0],
-        }));
+
+        const [rawRows] = await this.db.execute(sql.raw(rawSql));
+
+        const rows = Array.isArray(rawRows) ? (rawRows as Record<string, unknown>[]) : [];
+        const columns = rows.length > 0 ? Object.keys(rows[0]) : [];
+
         return {
           actionId,
-          sql,
+          sql: rawSql,
           rows,
           columns,
           rowCount: rows.length,

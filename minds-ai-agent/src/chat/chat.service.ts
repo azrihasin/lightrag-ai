@@ -243,13 +243,35 @@ function buildNodes(tools: ToolMap, logger: PinoLogger, modelProvider: ModelProv
     const retryCount = (state.retryCount ?? 0) + (state.validationStatus != null ? 1 : 0);
 
     if (state.strategy === 'sql') {
-      const result = (await callTool(tools, 'generate_sql', {
-        intent: state.userIntent ?? '',
-        dialect: 'postgres',
-        schemaHint: state.retrievedContext?.contextSummary,
-        rationale: state.currentPlan,
-      })) as { actionId: string; sql: string; dialect: string };
-      return { currentActionId: result.actionId, generatedSql: result.sql, sqlDialect: result.dialect as AgentState['sqlDialect'], generatedAction: undefined, retryCount };
+      const contextDocs = state.retrievedContext?.documents ?? [];
+      const schemaContext = contextDocs
+        .map((d: any) => (typeof d.content === 'string' ? d.content : ''))
+        .filter((c: string) => c.trim().length > 0)
+        .join('\n\n---\n\n');
+      const schemaHint = schemaContext || state.retrievedContext?.contextSummary;
+
+      try {
+        const result = (await callTool(tools, 'generate_sql', {
+          intent: state.userIntent ?? '',
+          dialect: 'mysql',
+          schemaHint,
+          rationale: state.currentPlan,
+        })) as { actionId: string; sql: string; dialect: string };
+        (config as any)?.writer?.({ type: 'node:progress', node: 'generateSqlOrToolCall', step: 'sql-query', data: { sql: result.sql, dialect: result.dialect } });
+        return { currentActionId: result.actionId, generatedSql: result.sql, sqlDialect: result.dialect as AgentState['sqlDialect'], generatedAction: undefined, retryCount };
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : 'SQL generation failed';
+        logger.warn({ reason }, 'generateSqlOrToolCall: SQL generation blocked');
+        return {
+          currentActionId: randomUUID(),
+          generatedSql: undefined,
+          generatedAction: undefined,
+          validationStatus: 'invalid_blocking' as AgentState['validationStatus'],
+          validationReason: reason,
+          isUnsafe: false,
+          retryCount,
+        };
+      }
     }
 
     const systemMap: Record<string, string> = { system_tool: 'calculator', hybrid: 'generic_search', direct: 'generic_search', unknown: 'generic_search' };
@@ -264,6 +286,12 @@ function buildNodes(tools: ToolMap, logger: PinoLogger, modelProvider: ModelProv
 
   async function validateSqlAction(state: AgentState, config?: RunnableConfig): Promise<Partial<AgentState>> {
     (config as any)?.writer?.({ type: 'node:start', node: 'validateSqlAction' });
+
+    // Generation already failed — validationStatus is pre-set; skip re-validation
+    if (!state.generatedSql && !state.generatedAction) {
+      return {};
+    }
+
     if (state.generatedSql) {
       const result = (await callTool(tools, 'validate_sql', {
         actionId: state.currentActionId ?? randomUUID(),
@@ -361,10 +389,13 @@ function buildNodes(tools: ToolMap, logger: PinoLogger, modelProvider: ModelProv
 
   async function humanReview(state: AgentState, config?: RunnableConfig): Promise<Partial<AgentState>> {
     (config as any)?.writer?.({ type: 'node:start', node: 'humanReview' });
+    const reason = state.validationReason ?? 'High-risk action detected';
     const result = (await callTool(tools, 'human_review_gate', {
-      reason: state.validationReason ?? 'High-risk action detected',
-      riskLevel: 'high',
-      suggestedResponse: 'This request requires human review before I can proceed. Please contact support.',
+      reason,
+      riskLevel: state.isUnsafe ? 'high' : 'medium',
+      suggestedResponse: state.isUnsafe
+        ? 'This request requires human review before I can proceed. Please contact support.'
+        : reason,
     })) as { reviewNeeded: boolean; suggestedResponse: string };
     return { reviewNotes: result.suggestedResponse };
   }
@@ -372,9 +403,13 @@ function buildNodes(tools: ToolMap, logger: PinoLogger, modelProvider: ModelProv
   async function composeFinalResponse(state: AgentState, config?: RunnableConfig): Promise<Partial<AgentState>> {
     (config as any)?.writer?.({ type: 'node:start', node: 'composeFinalResponse' });
     const hasViz = Boolean(state.visualizationPayload);
+    const execResult = state.executionResult as { rows?: Record<string, unknown>[]; columns?: string[]; rowCount?: number } | undefined;
+    const hasRows = Array.isArray(execResult?.rows) && (execResult?.rows.length ?? 0) > 0;
+    const rowCount = hasRows ? execResult!.rowCount : 0;
     const contextLines = [
-      `User intent: ${state.userIntent}`,
-      state.summary ? `Summary: ${state.summary}` : null,
+      `User question: ${state.userIntent}`,
+      state.summary ? `Data summary: ${state.summary}` : null,
+      hasRows ? `Total records returned: ${rowCount}` : null,
       state.reviewNotes ? `Review notes: ${state.reviewNotes}` : null,
       hasViz ? 'A visualization has been prepared and will appear alongside this response.' : null,
     ]
@@ -384,12 +419,29 @@ function buildNodes(tools: ToolMap, logger: PinoLogger, modelProvider: ModelProv
     const composeModel = modelProvider.getChatModel(['composeFinalResponse']);
     const finalResponse = await streamText(composeModel, [
       new SystemMessage(
-        'Compose a clear, helpful final response for the user. ' +
-          'Be concise and accurate. Do not repeat the intent back verbatim.',
+        'You are an assistant for a text-to-SQL application. The user asks questions in plain language and you query a database on their behalf to find the answer. ' +
+        'Write a concise, conversational response that directly answers the user\'s question based on what the data revealed. ' +
+        'Focus on the outcome and insights from the data — what the results mean for the user. ' +
+        'Do NOT mention SQL, queries, tables, columns, or technical database details. ' +
+        'Do NOT explain how the query was built. Do NOT repeat the question back verbatim. ' +
+        'Always end with a note that the full result table is shown below.',
       ),
       new HumanMessage(contextLines),
     ], config);
     logger.info({ responseLength: finalResponse.length, responsePreview: finalResponse.slice(0, 300) }, 'composeFinalResponse: LLM output');
+
+    // Signal the outer stream loop to attach the table as a message-level data part.
+    // Data is emitted AFTER the LLM call above so it is never in the model context.
+    const execResultForTable = state.executionResult as { rows?: Record<string, unknown>[]; columns?: string[]; rowCount?: number } | undefined;
+    if (Array.isArray(execResultForTable?.rows) && (execResultForTable?.rows.length ?? 0) > 0) {
+      (config as any)?.writer?.({
+        type: 'sql:final-table-result',
+        columns: execResultForTable!.columns ?? [],
+        rows: execResultForTable!.rows!,
+        rowCount: execResultForTable!.rowCount ?? execResultForTable!.rows!.length,
+      });
+    }
+
     return { finalResponse };
   }
 
@@ -415,6 +467,9 @@ function buildNodes(tools: ToolMap, logger: PinoLogger, modelProvider: ModelProv
 
 function routeAfterContext(state: AgentState): string {
   if (state.strategy === 'direct') return 'answerFromLightRAG';
+  if (state.strategy === 'sql' || state.strategy === 'system_tool' || state.strategy === 'hybrid') {
+    return 'planNextStep';
+  }
   return state.enoughContext ? 'answerFromLightRAG' : 'planNextStep';
 }
 
@@ -723,6 +778,17 @@ export class ChatService implements OnModuleInit {
             // node:start  → open the tool group for this node
             // node:progress → append a progress line to the tool group delta
             if (mode === 'custom') {
+              // Final SQL table — written as a message data part so it appears
+              // after the response text, outside the tool timeline.
+              if ((data as any).type === 'sql:final-table-result') {
+                const d = data as { type: string; columns: string[]; rows: Record<string, unknown>[]; rowCount: number };
+                writer.write({
+                  type: 'data-spec',
+                  data: { componentType: 'sql-result-table', props: { columns: d.columns, rows: d.rows, rowCount: d.rowCount } },
+                });
+                continue;
+              }
+
               const event = data as NodeCustomEvent;
               terminalLog('custom', event.node, event);
               this.logger.debug({ streamMode: 'custom', node: event.node, event }, 'stream event');
@@ -734,6 +800,18 @@ export class ChatService implements OnModuleInit {
                 if (toolCallId) {
                   if (event.step === 'token') {
                     (writer as any).write({ type: 'tool-output-delta', toolCallId, delta: event.data as string });
+                  } else if (event.step === 'sql-query') {
+                    const { sql, dialect } = event.data as { sql: string; dialect: string };
+                    (writer as any).write({ type: 'sql-generated', toolCallId, sql, dialect });
+                  } else if (event.step === 'sql-table-start') {
+                    const { columns } = event.data as { columns: string[] };
+                    (writer as any).write({ type: 'sql-table-start', toolCallId, columns });
+                  } else if (event.step === 'sql-table-row') {
+                    const { row } = event.data as { row: Record<string, unknown> };
+                    (writer as any).write({ type: 'sql-table-row', toolCallId, row });
+                  } else if (event.step === 'sql-table-end') {
+                    const { rowCount } = event.data as { rowCount: number };
+                    (writer as any).write({ type: 'sql-table-end', toolCallId, rowCount });
                   } else {
                     const progressLine = `\n[${event.step}] ${JSON.stringify(event.data ?? {})}`;
                     (writer as any).write({ type: 'tool-output-delta', toolCallId, delta: progressLine });

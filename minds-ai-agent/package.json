@@ -32,6 +32,8 @@
     "@nestjs/platform-express": "^11.0.1",
     "@nestjs/swagger": "^11.4.1",
     "ai": "^6.0.168",
+    "drizzle-orm": "^0.45.2",
+    "mysql2": "^3.22.3",
     "nestjs-pino": "^4.6.1",
     "pino-http": "^11.0.0",
     "pino-pretty": "^13.1.3",
