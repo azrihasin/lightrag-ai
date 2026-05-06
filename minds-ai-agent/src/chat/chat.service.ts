@@ -7,6 +7,7 @@ import type { CompiledStateGraph } from '@langchain/langgraph';
 import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 import type { RunnableConfig } from '@langchain/core/runnables';
 import * as z from 'zod';
+import * as jmespath from 'jmespath';
 import { randomUUID } from 'node:crypto';
 import { ModelProvider } from './providers/model.provider';
 import { ToolRegistry } from './tools/tool-registry';
@@ -127,6 +128,42 @@ function terminalLog(mode: string, node: string | undefined, payload: unknown): 
   const nodeCol = (node ?? '—').padEnd(28);
   process.stdout.write(`[${ts}] [${modeCol}] [${nodeCol}] ${JSON.stringify(payload)}\n`);
 }
+
+// ─── Visualization catalog (shared by decideVisualizationResult & populateVisualizationData) ───
+
+const CATALOG_SPEC =
+  'CHART COMPONENTS (json-render catalog):\n\n' +
+  'chartXY schema — props: { title: string, description?: string, data: Row[], xKey: string, series: string[], footerLabel?: string }\n' +
+  'Components: ChartAreaDefault, ChartAreaGradient, ChartAreaLegend, ChartAreaLinear, ChartAreaStacked, ChartAreaStackedExpand,\n' +
+  '            ChartAreaStep, ChartAreaAxes, ChartAreaIcons,\n' +
+  '            ChartBarDefault, ChartBarActive, ChartBarHorizontal, ChartBarLabel, ChartBarLabelCustom,\n' +
+  '            ChartBarMixed, ChartBarMultiple, ChartBarNegative, ChartBarStacked,\n' +
+  '            ChartLineDefault, ChartLineDots, ChartLineDotsColors, ChartLineDotsCustom,\n' +
+  '            ChartLineLabel, ChartLineLabelCustom, ChartLineLinear, ChartLineMultiple, ChartLineStep\n\n' +
+  'chartPie schema — props: { title: string, description?: string, data: Row[], nameKey: string, valueKey: string, footerLabel?: string }\n' +
+  'Components: ChartPieSimple, ChartPieDonut, ChartPieDonutActive, ChartPieDonutText,\n' +
+  '            ChartPieLabel, ChartPieLabelCustom, ChartPieLabelList, ChartPieLegend, ChartPieSeparatorNone, ChartPieStacked,\n' +
+  '            ChartRadialSimple, ChartRadialGrid, ChartRadialLabel, ChartRadialShape\n\n' +
+  'chartRadar schema — props: { title: string, description?: string, data: Row[], angleKey: string, series: string[], footerLabel?: string }\n' +
+  'Components: ChartRadarDefault, ChartRadarDots, ChartRadarGridCircle, ChartRadarGridFill, ChartRadarGridNone,\n' +
+  '            ChartRadarMultiple, ChartRadarLegend, ChartRadarLinesOnly, ChartRadarRadius\n\n' +
+  'Single-value:\n' +
+  '  ChartRadialText — props: { title, description?, value: number, label?: string, footerLabel? }\n' +
+  '  ChartRadialStacked — props: { title, description?, desktop: number, mobile: number, footerLabel? }';
+
+const SELECTION_RULES =
+  'SELECTION RULES:\n' +
+  '- Time series or ordered categories → ChartLineDefault or ChartAreaDefault\n' +
+  '- Comparing categories → ChartBarDefault (few series) or ChartBarMultiple (multiple series)\n' +
+  '- Long category names → ChartBarHorizontal\n' +
+  '- Part-to-whole ≤8 categories → ChartPieDonut or ChartPieSimple\n' +
+  '- Multi-metric radar comparison across axes → ChartRadarDefault or ChartRadarMultiple\n' +
+  '- Single numeric KPI → ChartRadialText\n' +
+  '- Multiple numeric series over the same categories → ChartLineMultiple or ChartBarMultiple\n' +
+  '- If data has fewer than 2 rows, is a single row, or is purely textual → set suitable=false\n\n' +
+  'Map actual column names to xKey/nameKey/angleKey and series/valueKey.\n' +
+  'Include ALL rows in props.data (not just the sample).\n' +
+  'Generate a descriptive title based on the SQL query intent.';
 
 // ─── Node Factories ────────────────────────────────────────────────────────────
 
@@ -391,11 +428,110 @@ function buildNodes(tools: ToolMap, logger: PinoLogger, modelProvider: ModelProv
 
   async function populateVisualizationData(state: AgentState, config?: RunnableConfig): Promise<Partial<AgentState>> {
     (config as any)?.writer?.({ type: 'node:start', node: 'populateVisualizationData' });
-    const result = (await callTool(tools, 'prepare_visualization_data', {
-      result: state.executionResult,
-      dataShape: state.inspectionDataShape,
-    })) as { suitable: boolean; componentType: string; props: Record<string, unknown> };
-    return { suitableForVisualization: result.suitable, visualizationComponentType: result.componentType, visualizationProps: result.props };
+
+    const execResult = state.executionResult as { rows?: Record<string, unknown>[]; columns?: string[]; rowCount?: number } | undefined;
+
+    const vizModel = modelProvider.getChatModel(['populateVisualizationData']);
+
+    const JMESPATH_FORMAT =
+      'Reply with a single JSON object only, no markdown fences:\n' +
+      '{ "suitable": boolean, "component": "ComponentName", "jmespathQuery": "jmespath expression evaluated against executionResult", ' +
+      '"staticProps": { "title": "...", <xKey|nameKey|angleKey>: "...", <series|valueKey>: [...|"..."], "description"?: "...", "footerLabel"?: "..." } }\n\n' +
+      'The `jmespathQuery` is evaluated against the executionResult object (fields: rows, columns, rowCount).\n' +
+      'For simple row extraction use "rows". For projections use JMESPath syntax e.g. "rows[*].{label: name, value: total}".\n' +
+      'The query result becomes the `data` prop of the component — do NOT include `data` in staticProps.';
+
+    const raw = await streamText(vizModel, [
+      new SystemMessage(
+        'You are a data visualization expert using the json-render catalog.\n' +
+        'Given a SQL execution result, select the best chart component and generate a JMESPath query to extract the data.\n\n' +
+        CATALOG_SPEC + '\n\n' + SELECTION_RULES + '\n\n' + JMESPATH_FORMAT,
+      ),
+      new HumanMessage(
+        `Execution result: ${JSON.stringify({ columns: execResult?.columns, rowCount: execResult?.rowCount, sampleRows: execResult?.rows?.slice(0, 5) })}\n` +
+        `Data shape: ${JSON.stringify(state.inspectionDataShape)}\n` +
+        `User intent: ${state.userIntent ?? ''}`,
+      ),
+    ], config);
+
+    try {
+      const parsed = parseJsonFromRaw(raw, z.object({
+        suitable: z.boolean(),
+        component: z.string().optional(),
+        jmespathQuery: z.string().optional(),
+        staticProps: z.record(z.string(), z.any()).optional(),
+      }));
+
+      if (!parsed.suitable || !parsed.component || !parsed.jmespathQuery) {
+        return { suitableForVisualization: false };
+      }
+
+      const data = jmespath.search(execResult ?? {}, parsed.jmespathQuery);
+      const props = { ...(parsed.staticProps ?? {}), data };
+
+      return {
+        suitableForVisualization: true,
+        visualizationComponentType: parsed.component,
+        visualizationProps: props,
+      };
+    } catch (err) {
+      logger.warn({ err }, 'populateVisualizationData: failed, falling back to no visualization');
+      return { suitableForVisualization: false };
+    }
+  }
+
+  async function decideVisualizationResult(state: AgentState, config?: RunnableConfig): Promise<Partial<AgentState>> {
+    (config as any)?.writer?.({ type: 'node:start', node: 'decideVisualizationResult' });
+
+    const execResult = state.executionResult as { rows?: Record<string, unknown>[]; columns?: string[]; rowCount?: number } | undefined;
+    const sql = state.generatedSql ?? '';
+
+    const JMESPATH_FORMAT =
+      'Reply with a single JSON object only, no markdown fences:\n' +
+      '{ "suitable": boolean, "component": "ComponentName", "jmespathQuery": "jmespath expression evaluated against executionResult", ' +
+      '"staticProps": { "title": "...", <xKey|nameKey|angleKey>: "...", <series|valueKey>: [...|"..."], "description"?: "...", "footerLabel"?: "..." } }\n\n' +
+      'The `jmespathQuery` is evaluated against the executionResult object (fields: rows, columns, rowCount).\n' +
+      'For simple row extraction use "rows". For projections use JMESPath syntax e.g. "rows[*].{label: name, value: total}".\n' +
+      'The query result becomes the `data` prop of the component — do NOT include `data` in staticProps.';
+
+    const decideModel = modelProvider.getChatModel(['decideVisualizationResult']);
+    try {
+      const raw = await streamText(decideModel, [
+        new SystemMessage(
+          'You are a data visualization expert using the json-render catalog.\n' +
+          'Given a SQL query and its execution result, select the best chart component and generate a JMESPath query to extract the data.\n\n' +
+          CATALOG_SPEC + '\n\n' + SELECTION_RULES + '\n\n' + JMESPATH_FORMAT,
+        ),
+        new HumanMessage(
+          `SQL Query:\n${sql}\n\n` +
+          `Execution result: ${JSON.stringify({ columns: execResult?.columns, rowCount: execResult?.rowCount, sampleRows: execResult?.rows?.slice(0, 5) })}\n` +
+          `User intent: ${state.userIntent ?? ''}`,
+        ),
+      ], config);
+
+      const parsed = parseJsonFromRaw(raw, z.object({
+        suitable: z.boolean(),
+        component: z.string().optional(),
+        jmespathQuery: z.string().optional(),
+        staticProps: z.record(z.string(), z.any()).optional(),
+      }));
+
+      if (!parsed.suitable || !parsed.component || !parsed.jmespathQuery) {
+        return { suitableForVisualization: false };
+      }
+
+      const data = jmespath.search(execResult ?? {}, parsed.jmespathQuery);
+      const props = { ...(parsed.staticProps ?? {}), data };
+
+      return {
+        suitableForVisualization: true,
+        visualizationComponentType: parsed.component,
+        visualizationProps: props,
+      };
+    } catch (err) {
+      logger.warn({ err }, 'decideVisualizationResult: failed, falling back to no visualization');
+      return { suitableForVisualization: false };
+    }
   }
 
   async function renderVisualization(state: AgentState, config?: RunnableConfig): Promise<Partial<AgentState>> {
@@ -486,7 +622,7 @@ function buildNodes(tools: ToolMap, logger: PinoLogger, modelProvider: ModelProv
   return {
     analyzeUserIntent, strategyDecision, retrieveContext, answerFromLightRAG,
     planNextStep, disambiguateAskUser, generateSqlOrToolCall, validateSqlAction,
-    executeSqlCallSystem, inspectResult, decideNextStep, callExternalSystem,
+    executeSqlCallSystem, decideVisualizationResult, inspectResult, decideNextStep, callExternalSystem,
     prepareUserDataForVisualization, populateVisualizationData, renderVisualization,
     summarizeResult, humanReview, composeFinalResponse, streamFinalResponse,
   };
@@ -519,6 +655,9 @@ function routeAfterValidation(state: AgentState): string {
 function routeAfterInspect(state: AgentState): string {
   if (state.isUnsafe) return 'humanReview';
   if (!state.taskComplete) return 'decideNextStep';
+  if (state.visualizationComponentType !== undefined) {
+    return state.suitableForVisualization ? 'renderVisualization' : 'summarizeResult';
+  }
   return 'populateVisualizationData';
 }
 
@@ -547,6 +686,7 @@ function buildGraph(tools: ToolMap, logger: PinoLogger, modelProvider: ModelProv
     .addNode('generateSqlOrToolCall',     nodes.generateSqlOrToolCall)
     .addNode('validateSqlAction',         nodes.validateSqlAction)
     .addNode('executeSqlCallSystem',      nodes.executeSqlCallSystem)
+    .addNode('decideVisualizationResult', nodes.decideVisualizationResult)
     .addNode('inspectResult',             nodes.inspectResult)
     .addNode('decideNextStep',            nodes.decideNextStep)
     .addNode('callExternalSystem',        nodes.callExternalSystem)
@@ -562,7 +702,8 @@ function buildGraph(tools: ToolMap, logger: PinoLogger, modelProvider: ModelProv
     .addEdge('analyzeUserIntent',              'strategyDecision')
     .addEdge('prepareUserDataForVisualization','populateVisualizationData')
     .addEdge('generateSqlOrToolCall',     'validateSqlAction')
-    .addEdge('executeSqlCallSystem',      'inspectResult')
+    .addEdge('executeSqlCallSystem',      'decideVisualizationResult')
+    .addEdge('decideVisualizationResult', 'inspectResult')
     .addEdge('callExternalSystem',        'inspectResult')
     .addEdge('renderVisualization',       'composeFinalResponse')
     .addEdge('summarizeResult',           'composeFinalResponse')
@@ -590,9 +731,11 @@ function buildGraph(tools: ToolMap, logger: PinoLogger, modelProvider: ModelProv
       humanReview:           'humanReview',
     })
     .addConditionalEdges('inspectResult', routeAfterInspect, {
-      humanReview:              'humanReview',
-      decideNextStep:           'decideNextStep',
-      populateVisualizationData:'populateVisualizationData',
+      humanReview:               'humanReview',
+      decideNextStep:            'decideNextStep',
+      populateVisualizationData: 'populateVisualizationData',
+      renderVisualization:       'renderVisualization',
+      summarizeResult:           'summarizeResult',
     })
     .addConditionalEdges('decideNextStep', routeAfterDecideNextStep, {
       disambiguateAskUser:   'disambiguateAskUser',
@@ -622,6 +765,7 @@ const TOOL_STREAMING_NODES = new Set([
   'strategyDecision',
   'planNextStep',
   'decideNextStep',
+  'decideVisualizationResult',
 ]);
 
 function resolveToolName(nodeName: string, state: AgentState): string | undefined {
@@ -635,6 +779,7 @@ function resolveToolName(nodeName: string, state: AgentState): string | undefine
     case 'validateSqlAction':         return state.generatedSql ? 'validate_sql' : 'validate_action';
     case 'executeSqlCallSystem':      return state.generatedSql ? 'execute_sql' : 'execute_system_action';
     case 'callExternalSystem':        return 'execute_system_action';
+    case 'decideVisualizationResult': return 'decide_visualization';
     case 'inspectResult':             return 'inspect_result';
     case 'decideNextStep':            return 'decide_next_step';
     case 'populateVisualizationData': return 'prepare_visualization_data';
@@ -658,6 +803,7 @@ function resolveStartingMessage(nodeName: string, state: AgentState): string {
     case 'validateSqlAction':         return state.generatedSql ? `Validating SQL query safety and correctness…` : `Validating action parameters…`;
     case 'executeSqlCallSystem':      return state.generatedSql ? `Executing SQL against the database…` : `Executing system action…`;
     case 'callExternalSystem':        return `Calling external system for ${intent}…`;
+    case 'decideVisualizationResult': return `Analyzing SQL result to select the best visualization component…`;
     case 'inspectResult':             return `Inspecting execution result for completeness…`;
     case 'decideNextStep':            return `Evaluating result and deciding next step…`;
     case 'populateVisualizationData': return `Preparing data for visualization…`;
@@ -684,6 +830,10 @@ function extractNodeArgs(nodeName: string, state: AgentState): Record<string, un
     case 'validateSqlAction':         return state.generatedSql ? { sql: state.generatedSql, dialect: state.sqlDialect } : { toolName: action?.toolName, input: action?.input };
     case 'executeSqlCallSystem':      return state.generatedSql ? { sql: state.generatedSql } : { toolName: action?.toolName, input: action?.input };
     case 'callExternalSystem':        return { intent: state.userIntent, hasPreviousResult: state.executionResult !== undefined };
+    case 'decideVisualizationResult': {
+      const er = state.executionResult as { columns?: string[]; rowCount?: number } | undefined;
+      return { sql: state.generatedSql, columns: er?.columns, rowCount: er?.rowCount };
+    }
     case 'inspectResult':             return { intent: state.userIntent, hasResult: state.executionResult !== undefined };
     case 'decideNextStep':            return { intent: state.userIntent, hasResult: state.executionResult !== undefined };
     case 'populateVisualizationData': return { hasResult: state.executionResult !== undefined, dataShape: state.inspectionDataShape };
@@ -717,6 +867,7 @@ function summarizeNodeOutput(nodeName: string, output: Partial<AgentState>): unk
     case 'validateSqlAction':         return { status: output.validationStatus, reason: output.validationReason, isUnsafe: output.isUnsafe };
     case 'executeSqlCallSystem':
     case 'callExternalSystem':        return output.executionResult;
+    case 'decideVisualizationResult': return { suitable: output.suitableForVisualization, component: output.visualizationComponentType };
     case 'inspectResult':             return { complete: output.taskComplete, dataShape: output.inspectionDataShape };
     case 'populateVisualizationData': return { suitable: output.suitableForVisualization, componentType: output.visualizationComponentType };
     case 'renderVisualization':       return { rendered: vizPayload !== undefined, componentType: vizPayload?.componentType };
