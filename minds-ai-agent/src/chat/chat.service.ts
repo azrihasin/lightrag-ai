@@ -21,8 +21,9 @@ const AgentStateSchema = z.object({
   ),
   userIntent: z.string().optional(),
   strategy: z
-    .enum(['direct', 'sql', 'system_tool', 'hybrid', 'unknown'])
+    .enum(['direct', 'sql', 'system_tool', 'hybrid', 'unknown', 'data_crosscheck', 'data_passthrough'])
     .optional(),
+  userProvidedData: z.any().optional(),
   retrievedContext: z
     .object({
       documents: z.array(z.any()),
@@ -149,23 +150,40 @@ function buildNodes(tools: ToolMap, logger: PinoLogger, modelProvider: ModelProv
 
   async function strategyDecision(state: AgentState, config?: RunnableConfig): Promise<Partial<AgentState>> {
     (config as any)?.writer?.({ type: 'node:start', node: 'strategyDecision' });
-    const VALID_STRATEGIES = ['direct', 'sql', 'system_tool', 'hybrid', 'unknown'] as const;
+    const VALID_STRATEGIES = ['direct', 'sql', 'system_tool', 'hybrid', 'unknown', 'data_crosscheck', 'data_passthrough'] as const;
+    const lastUser = [...state.messages].reverse().find((m) => m.role === 'user');
+    const userMessage = lastUser?.content ?? '';
     const strategyModel = modelProvider.getChatModel(['strategyDecision']);
     const raw = await streamText(strategyModel, [
       new SystemMessage(
-        'Select the best execution strategy for the given intent. ' +
-        '"sql" = needs database query, "system_tool" = needs calculator/search/API, ' +
-        '"direct" = can be answered from knowledge, "hybrid" = mixed, "unknown" = unclear. ' +
-        'Use exactly one of these values as the "strategy" key: direct, sql, system_tool, hybrid, unknown.' +
-        '\n\nReply with a single JSON object only. No markdown fences.',
+        'Select the best execution strategy for the given intent and user message.\n\n' +
+        'STRATEGY OPTIONS:\n' +
+        '- "sql"              = needs a database query to retrieve data\n' +
+        '- "system_tool"      = needs a calculator, search engine, or external API\n' +
+        '- "direct"           = can be answered from general knowledge alone\n' +
+        '- "hybrid"           = mixed approach (knowledge + query)\n' +
+        '- "data_crosscheck"  = user has included data directly in their message AND wants it\n' +
+        '                       validated or cross-referenced against the knowledge base\n' +
+        '                       (which contains schema definitions and UI specs)\n' +
+        '- "data_passthrough" = user has included data directly in their message AND just wants\n' +
+        '                       it processed, visualized, or reformatted — no database query or\n' +
+        '                       knowledge-base lookup needed\n' +
+        '- "unknown"          = unclear intent\n\n' +
+        'DETECTING USER-PROVIDED DATA: Look for inline tables (CSV, markdown tables), JSON arrays/objects,\n' +
+        'numbered/bulleted lists of records, or any structured dataset embedded in the message.\n\n' +
+        'When strategy is "data_passthrough" or "data_crosscheck", extract the raw data from the user\n' +
+        'message and include it as "userProvidedData" in your response (as a JSON array when possible).\n\n' +
+        'Use exactly one of these values as the "strategy" key: direct, sql, system_tool, hybrid, unknown, data_crosscheck, data_passthrough.\n\n' +
+        'Reply with a single JSON object only. No markdown fences.',
       ),
-      new HumanMessage(`Intent: "${state.userIntent}"`),
+      new HumanMessage(`Intent: "${state.userIntent}"\n\nOriginal user message: "${userMessage}"`),
     ], config);
     return parseJsonFromRaw(raw, z.object({
       strategy: z.string().transform((val): typeof VALID_STRATEGIES[number] => {
         const norm = val.toLowerCase().trim() as typeof VALID_STRATEGIES[number];
         return VALID_STRATEGIES.includes(norm) ? norm : 'unknown';
       }),
+      userProvidedData: z.any().optional(),
     }));
   }
 
@@ -360,6 +378,17 @@ function buildNodes(tools: ToolMap, logger: PinoLogger, modelProvider: ModelProv
     return { executionResult: result };
   }
 
+  async function prepareUserDataForVisualization(state: AgentState, config?: RunnableConfig): Promise<Partial<AgentState>> {
+    (config as any)?.writer?.({ type: 'node:start', node: 'prepareUserDataForVisualization' });
+    const data = state.userProvidedData;
+    const rows = Array.isArray(data) ? data : (data != null ? [data] : []);
+    return {
+      executionResult: { rows, success: true, actionId: randomUUID(), durationMs: 0, rowCount: rows.length },
+      taskComplete: true,
+      inspectionDataShape: { type: 'user_provided', rowCount: rows.length },
+    };
+  }
+
   async function populateVisualizationData(state: AgentState, config?: RunnableConfig): Promise<Partial<AgentState>> {
     (config as any)?.writer?.({ type: 'node:start', node: 'populateVisualizationData' });
     const result = (await callTool(tools, 'prepare_visualization_data', {
@@ -458,15 +487,19 @@ function buildNodes(tools: ToolMap, logger: PinoLogger, modelProvider: ModelProv
     analyzeUserIntent, strategyDecision, retrieveContext, answerFromLightRAG,
     planNextStep, disambiguateAskUser, generateSqlOrToolCall, validateSqlAction,
     executeSqlCallSystem, inspectResult, decideNextStep, callExternalSystem,
-    populateVisualizationData, renderVisualization, summarizeResult, humanReview,
-    composeFinalResponse, streamFinalResponse,
+    prepareUserDataForVisualization, populateVisualizationData, renderVisualization,
+    summarizeResult, humanReview, composeFinalResponse, streamFinalResponse,
   };
 }
 
 // ─── Conditional Edge Functions ───────────────────────────────────────────────
 
+function routeAfterStrategy(state: AgentState): string {
+  return state.strategy === 'data_passthrough' ? 'prepareUserDataForVisualization' : 'retrieveContext';
+}
+
 function routeAfterContext(state: AgentState): string {
-  if (state.strategy === 'direct') return 'answerFromLightRAG';
+  if (state.strategy === 'direct' || state.strategy === 'data_crosscheck') return 'answerFromLightRAG';
   if (state.strategy === 'sql' || state.strategy === 'system_tool' || state.strategy === 'hybrid') {
     return 'planNextStep';
   }
@@ -517,6 +550,7 @@ function buildGraph(tools: ToolMap, logger: PinoLogger, modelProvider: ModelProv
     .addNode('inspectResult',             nodes.inspectResult)
     .addNode('decideNextStep',            nodes.decideNextStep)
     .addNode('callExternalSystem',        nodes.callExternalSystem)
+    .addNode('prepareUserDataForVisualization', nodes.prepareUserDataForVisualization)
     .addNode('populateVisualizationData', nodes.populateVisualizationData)
     .addNode('renderVisualization',       nodes.renderVisualization)
     .addNode('summarizeResult',           nodes.summarizeResult)
@@ -524,9 +558,9 @@ function buildGraph(tools: ToolMap, logger: PinoLogger, modelProvider: ModelProv
     .addNode('composeFinalResponse',      nodes.composeFinalResponse)
     .addNode('streamFinalResponse',       nodes.streamFinalResponse)
 
-    .addEdge(START,                       'analyzeUserIntent')
-    .addEdge('analyzeUserIntent',         'strategyDecision')
-    .addEdge('strategyDecision',          'retrieveContext')
+    .addEdge(START,                            'analyzeUserIntent')
+    .addEdge('analyzeUserIntent',              'strategyDecision')
+    .addEdge('prepareUserDataForVisualization','populateVisualizationData')
     .addEdge('generateSqlOrToolCall',     'validateSqlAction')
     .addEdge('executeSqlCallSystem',      'inspectResult')
     .addEdge('callExternalSystem',        'inspectResult')
@@ -538,6 +572,10 @@ function buildGraph(tools: ToolMap, logger: PinoLogger, modelProvider: ModelProv
     .addEdge('composeFinalResponse',      'streamFinalResponse')
     .addEdge('streamFinalResponse',       END)
 
+    .addConditionalEdges('strategyDecision', routeAfterStrategy, {
+      retrieveContext:               'retrieveContext',
+      prepareUserDataForVisualization: 'prepareUserDataForVisualization',
+    })
     .addConditionalEdges('retrieveContext', routeAfterContext, {
       answerFromLightRAG: 'answerFromLightRAG',
       planNextStep:       'planNextStep',

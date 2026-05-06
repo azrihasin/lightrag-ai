@@ -7,7 +7,7 @@ export type ExecutionStatus = 'pending' | 'running' | 'success' | 'error';
 export type TerminalStatus = 'complete' | 'clarification_sent' | 'review_needed' | 'max_steps_reached';
 export type NextStepType = 'another_query' | 'another_system' | 'human_decision' | 'complete';
 export type RiskLevel = 'safe' | 'low' | 'medium' | 'high';
-export type Strategy = 'direct' | 'sql' | 'system_tool' | 'hybrid' | 'unknown';
+export type Strategy = 'direct' | 'sql' | 'system_tool' | 'hybrid' | 'unknown' | 'data_crosscheck' | 'data_passthrough';
 
 export interface Action {
   id: string;
