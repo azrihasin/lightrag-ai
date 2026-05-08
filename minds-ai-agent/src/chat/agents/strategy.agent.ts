@@ -1,6 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { Response } from 'express';
-import { streamText, createUIMessageStream, pipeUIMessageStreamToResponse, stepCountIs } from 'ai';
+import { createReactAgent } from '@langchain/langgraph/prebuilt';
+import { HumanMessage, AIMessage } from '@langchain/core/messages';
+import { createUIMessageStream, pipeUIMessageStreamToResponse } from 'ai';
+import { randomUUID } from 'node:crypto';
 import { ToolRegistry } from '../tools/tool-registry';
 import { ModelProvider } from '../providers/model.provider';
 import { UiDiscoveryService } from '../discovery/ui-discovery.service';
@@ -26,45 +29,48 @@ export class StrategyAgent {
   ) {}
 
   run(messages: MessageDto[], enableUiDiscovery: boolean, res: Response): void {
-    const model = this.modelProvider.getModel();
-    const tools = this.toolRegistry.getAll();
+    const model = this.modelProvider.getChatModel();
+    const tools = this.toolRegistry.asList();
 
-    // Capture writer reference so onStepFinish can inject UI discovery annotations
-    let uiWriter: { write: (part: unknown) => void } | null = null;
-
-    const result = streamText({
-      model,
-      messages,
+    const agent = createReactAgent({
+      llm: model,
       tools,
-      stopWhen: stepCountIs(5),
-      system: SYSTEM_PROMPT,
-      onStepFinish: ({ toolResults }) => {
-        if (!uiWriter || !enableUiDiscovery || !toolResults?.length) return;
-        for (const tr of toolResults as Array<{ toolCallId: string; toolName: string; output?: unknown }>) {
-          const raw = tr.output;
-          const toolResult = {
-            toolName: tr.toolName,
-            toolCallId: tr.toolCallId,
-            output: this.toolRegistry.sanitize(raw),
-            sanitized: true,
-            durationMs: 0,
-          };
-          const discovery = this.uiDiscovery.inspect(toolResult);
-          if (discovery) {
-            const dataSpec = this.uiDiscovery.buildDataSpec(discovery);
-            uiWriter.write({ type: 'data-spec', data: { componentType: dataSpec.componentType, props: dataSpec.props } });
+      messageModifier: SYSTEM_PROMPT,
+    });
+
+    const lcMessages = messages.map((m) =>
+      m.role === 'user' ? new HumanMessage(m.content) : new AIMessage(m.content),
+    );
+
+    const uiStream = createUIMessageStream({
+      execute: async ({ writer }) => {
+        let openTextId: string | null = null;
+
+        try {
+          const agentStream = await agent.stream(
+            { messages: lcMessages },
+            { streamMode: 'messages' },
+          );
+
+          for await (const [chunk, metadata] of agentStream as AsyncIterable<[{ content: unknown }, Record<string, unknown>]>) {
+            const node = metadata?.langgraph_node as string | undefined;
+            if (node !== 'agent') continue;
+
+            const content = typeof chunk.content === 'string' ? chunk.content : '';
+            if (!content) continue;
+
+            if (!openTextId) {
+              openTextId = randomUUID();
+              writer.write({ type: 'text-start', id: openTextId });
+            }
+            writer.write({ type: 'text-delta', id: openTextId, delta: content });
           }
+        } finally {
+          if (openTextId) writer.write({ type: 'text-end', id: openTextId });
         }
       },
     });
 
-    const stream = createUIMessageStream({
-      execute: ({ writer }) => {
-        uiWriter = writer;
-        writer.merge(result.toUIMessageStream());
-      },
-    });
-
-    pipeUIMessageStreamToResponse({ response: res, stream });
+    pipeUIMessageStreamToResponse({ response: res, stream: uiStream });
   }
 }

@@ -12,7 +12,6 @@ import { ExecuteSqlTool } from './tools/execute-sql.tool';
 import { GenerateActionTool } from './tools/generate-action.tool';
 import { ValidateActionTool } from './tools/validate-action.tool';
 import { ExecuteSystemActionTool } from './tools/execute-system-action.tool';
-import { InspectResultTool } from './tools/inspect-result.tool';
 import { PrepareVisualizationTool } from './tools/prepare-visualization.tool';
 import { RenderVisualizationTool } from './tools/render-visualization.tool';
 import { HumanReviewGateTool } from './tools/human-review-gate.tool';
@@ -33,7 +32,6 @@ import { CalculatorTool } from './tools/calculator.tool';
     GenerateActionTool,
     ValidateActionTool,
     ExecuteSystemActionTool,
-    InspectResultTool,
     PrepareVisualizationTool,
     RenderVisualizationTool,
     HumanReviewGateTool,

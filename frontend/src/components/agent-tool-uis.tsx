@@ -1,21 +1,24 @@
 "use client";
 
-import { memo, useMemo, type ReactNode } from "react";
+import { memo, useMemo, useState, useEffect, type ReactNode } from "react";
 import type { ToolCallMessagePartComponent } from "@assistant-ui/react";
 import { useToolOutputStreamStore } from "@/lib/tool-output-stream";
 import { useSqlTableStreamStore } from "@/lib/sql-table-stream";
 import { useSqlGeneratedStore } from "@/lib/sql-generated-store";
 import { FileTextIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useJmespathStore } from "@/lib/jmespath-store";
 import {
   Table,
   TableHeader,
   TableBody,
-  TableFooter,
   TableRow,
   TableHead,
   TableCell,
 } from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
+
+const PAGE_SIZE = 10;
 import {
   Timeline,
   TimelineContent,
@@ -218,6 +221,11 @@ function SqlResultTable({
 }) {
   const isRunning = status?.type === "running";
   const tableData = useSqlTableStreamStore((s) => s.tables[toolCallId] ?? null);
+  const [page, setPage] = useState(0);
+
+  useEffect(() => {
+    setPage(0);
+  }, [toolCallId]);
 
   const errorMessage = useMemo<string | null>(() => {
     if (!result || typeof result !== "string") return null;
@@ -252,67 +260,89 @@ function SqlResultTable({
     return null;
   }
 
-  const rowCount = tableData.rowCount ?? tableData.rows.length;
+  const totalRows = tableData.rows.length;
+  const totalPages = Math.max(1, Math.ceil(totalRows / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages - 1);
+  const pagedRows = tableData.rows.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
+  const showPagination = totalRows > PAGE_SIZE;
+  const rowCount = tableData.rowCount ?? totalRows;
 
   return (
-    <div className="mt-2 rounded-md border overflow-hidden">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            {tableData.columns.map((col) => (
-              <TableHead key={col}>{col}</TableHead>
-            ))}
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {tableData.rows.length === 0 && tableData.isComplete ? (
+    <div className="mt-2">
+      <div className="overflow-hidden rounded-md border">
+        <Table>
+          <TableHeader>
             <TableRow>
-              <TableCell
-                colSpan={tableData.columns.length}
-                className="py-4 text-center text-muted-foreground"
-              >
-                No rows returned
-              </TableCell>
+              {tableData.columns.map((col) => (
+                <TableHead key={col}>{col}</TableHead>
+              ))}
             </TableRow>
-          ) : (
-            tableData.rows.map((row, i) => (
-              <TableRow key={i}>
-                {tableData.columns.map((col) => {
-                  const cell = row[col];
-                  return (
-                    <TableCell key={col}>
-                      {cell === null || cell === undefined ? (
-                        <span className="italic text-muted-foreground">NULL</span>
-                      ) : (
-                        String(cell)
-                      )}
-                    </TableCell>
-                  );
-                })}
+          </TableHeader>
+          <TableBody>
+            {totalRows === 0 && tableData.isComplete ? (
+              <TableRow>
+                <TableCell
+                  colSpan={tableData.columns.length}
+                  className="py-4 text-center text-muted-foreground"
+                >
+                  No rows returned
+                </TableCell>
               </TableRow>
-            ))
-          )}
-          {isRunning && tableData.rows.length > 0 && (
-            <TableRow>
-              <TableCell colSpan={tableData.columns.length} className="py-1">
-                <span className="inline-block h-3 w-1.5 animate-pulse bg-current opacity-50" />
-              </TableCell>
-            </TableRow>
-          )}
-        </TableBody>
-        {tableData.isComplete && (
-          <TableFooter>
-            <TableRow>
-              <TableCell
-                colSpan={tableData.columns.length}
-                className="text-xs text-muted-foreground"
-              >
-                {rowCount} {rowCount === 1 ? "row" : "rows"}
-              </TableCell>
-            </TableRow>
-          </TableFooter>
+            ) : (
+              pagedRows.map((row, i) => (
+                <TableRow key={safePage * PAGE_SIZE + i}>
+                  {tableData.columns.map((col) => {
+                    const cell = row[col];
+                    return (
+                      <TableCell key={col}>
+                        {cell === null || cell === undefined ? (
+                          <span className="italic text-muted-foreground">NULL</span>
+                        ) : (
+                          String(cell)
+                        )}
+                      </TableCell>
+                    );
+                  })}
+                </TableRow>
+              ))
+            )}
+            {isRunning && totalRows > 0 && (
+              <TableRow>
+                <TableCell colSpan={tableData.columns.length} className="py-1">
+                  <span className="inline-block h-3 w-1.5 animate-pulse bg-current opacity-50" />
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
+      <div className="flex items-center justify-end space-x-2 py-4">
+        <span className="flex-1 text-xs text-muted-foreground">
+          {tableData.isComplete
+            ? `${rowCount} ${rowCount === 1 ? "row" : "rows"}`
+            : `${totalRows} ${totalRows === 1 ? "row" : "rows"} so far…`}
+        </span>
+        {showPagination && (
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage((p) => Math.max(0, p - 1))}
+              disabled={safePage === 0}
+            >
+              Previous
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+              disabled={safePage >= totalPages - 1}
+            >
+              Next
+            </Button>
+          </>
         )}
-      </Table>
+      </div>
     </div>
   );
 }
@@ -396,13 +426,6 @@ ExecuteSystemActionUI.displayName = "ExecuteSystemActionUI";
 
 // ─── Phase 3 – Result & Visualization ────────────────────────────────────────
 
-export const InspectResultUI: ToolCallMessagePartComponent = memo(
-  ({ status, toolCallId }) => (
-    <AgentToolGroup label="Inspect Result" status={status} toolCallId={toolCallId} />
-  ),
-);
-InspectResultUI.displayName = "InspectResultUI";
-
 export const DecideNextStepUI: ToolCallMessagePartComponent = memo(
   ({ status, toolCallId }) => (
     <AgentToolGroup label="Deciding Next Step" status={status} toolCallId={toolCallId} />
@@ -417,9 +440,81 @@ export const PrepareVisualizationUI: ToolCallMessagePartComponent = memo(
 );
 PrepareVisualizationUI.displayName = "PrepareVisualizationUI";
 
+function JmespathCodeBlock({ toolCallId, result }: { toolCallId?: string; result?: string }) {
+  // During streaming: read from the store (populated by the jmespath-query SSE event).
+  // After completion: fall back to the serialised tool result.
+  const storeEntry = useJmespathStore(
+    (s) => (toolCallId ? (s.entries[toolCallId] ?? null) : null),
+  );
+
+  const query = storeEntry
+    ? storeEntry.query
+    : (() => {
+        const parsed = parseJson(result);
+        return typeof parsed.jmespathQuery === "string" ? parsed.jmespathQuery : undefined;
+      })();
+
+  if (!query) return null;
+
+  return (
+    <div className="mt-2 overflow-hidden rounded-md border border-border bg-muted/40">
+      <div className="border-b border-border px-3 py-1.5">
+        <span className="text-xs font-medium text-muted-foreground">JMESPath Query</span>
+      </div>
+      <pre className="overflow-x-auto p-3 text-xs leading-relaxed text-foreground">
+        <code>{query}</code>
+      </pre>
+    </div>
+  );
+}
+
+export const DecideVisualizationUI: ToolCallMessagePartComponent = memo(
+  ({ status, toolCallId, result }) => (
+    <AgentToolGroup label="Decide Visualization" status={status} toolCallId={toolCallId}>
+      <JmespathCodeBlock toolCallId={toolCallId} result={result} />
+    </AgentToolGroup>
+  ),
+);
+DecideVisualizationUI.displayName = "DecideVisualizationUI";
+
+function JmespathResultCodeBlock({ result, status }: { result?: string; status: StatusType }) {
+  const isRunning = status?.type === "running";
+
+  const dataSpec = useMemo(() => {
+    if (!result) return undefined;
+    const parsed = parseJson(result);
+    return parsed.dataSpec as Record<string, unknown> | undefined;
+  }, [result]);
+
+  if (isRunning) {
+    return (
+      <div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
+        <span className="inline-block h-3 w-1.5 animate-pulse bg-current opacity-50" />
+        Building visualization…
+      </div>
+    );
+  }
+
+  if (!dataSpec) return null;
+
+  return (
+    <div className="mt-2 overflow-hidden rounded-md border border-border bg-muted/40">
+      <div className="flex items-center justify-between border-b border-border px-3 py-1.5">
+        <span className="text-xs font-medium text-muted-foreground">Render Spec</span>
+        <span className="text-xs text-muted-foreground/60">{String(dataSpec.componentType ?? "")}</span>
+      </div>
+      <pre className="overflow-x-auto p-3 text-xs leading-relaxed text-foreground max-h-64">
+        <code>{JSON.stringify(dataSpec, null, 2)}</code>
+      </pre>
+    </div>
+  );
+}
+
 export const RenderVisualizationUI: ToolCallMessagePartComponent = memo(
-  ({ status, toolCallId }) => (
-    <AgentToolGroup label="Render Visualization" status={status} toolCallId={toolCallId} />
+  ({ status, toolCallId, result }) => (
+    <AgentToolGroup label="Render Visualization" status={status} toolCallId={toolCallId}>
+      <JmespathResultCodeBlock result={result} status={status} />
+    </AgentToolGroup>
   ),
 );
 RenderVisualizationUI.displayName = "RenderVisualizationUI";

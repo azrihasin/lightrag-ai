@@ -1,26 +1,35 @@
 import { Injectable } from '@nestjs/common';
-import { tool } from 'ai';
+import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
 import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 import { ModelProvider } from '../providers/model.provider';
+
+async function streamToText(
+  model: ReturnType<ModelProvider['getChatModel']>,
+  messages: (SystemMessage | HumanMessage)[],
+): Promise<string> {
+  let text = '';
+  for await (const chunk of await model.stream(messages)) {
+    const c = chunk.content;
+    if (typeof c === 'string') {
+      text += c;
+    } else if (Array.isArray(c)) {
+      for (const block of c as Array<{ type?: string; text?: string }>) {
+        if (block.type === 'text' && block.text) text += block.text;
+      }
+    }
+  }
+  return text;
+}
 
 @Injectable()
 export class GenerateSqlTool {
   constructor(private readonly modelProvider: ModelProvider) {}
 
   asTool() {
-    return tool({
-      description:
-        'Convert a natural-language data intent into a SQL SELECT query. ' +
-        'Always follow with validate_sql before executing.',
-      inputSchema: z.object({
-        intent: z.string().describe('Natural-language description of the data to retrieve'),
-        dialect: z.enum(['postgres', 'mysql', 'sqlite', 'mssql']).optional().default('mysql'),
-        schemaHint: z.string().optional().describe('Relevant table/column hints from context'),
-        rationale: z.string().optional().describe('Why this SQL satisfies the intent'),
-      }),
-      execute: async ({ intent, dialect, schemaHint, rationale }) => {
+    return tool(
+      async ({ intent, dialect, schemaHint, rationale }) => {
         const model = this.modelProvider.getChatModel(['generateSql']);
 
         if (!schemaHint || schemaHint.trim().length === 0) {
@@ -30,10 +39,7 @@ export class GenerateSqlTool {
           );
         }
 
-        // Step 1: Parse schemaHint into a structured table→columns map.
-        // This prevents the SQL generator from using invented column names or
-        // assigning columns to a table they don't belong to.
-        const extractionRaw = await model.invoke([
+        const extractionRaw = await streamToText(model, [
           new SystemMessage(
             'Extract the database schema from the provided text.\n' +
             'Return ONLY a JSON object with this exact structure:\n' +
@@ -48,9 +54,11 @@ export class GenerateSqlTool {
           new HumanMessage(`Schema text:\n${schemaHint}`),
         ]);
 
-        const extractionContent = extractionRaw.content;
-        let extractionText = typeof extractionContent === 'string' ? extractionContent.trim() : String(extractionContent).trim();
-        extractionText = extractionText.replace(/^```[\w]*\n?/i, '').replace(/\n?```$/i, '').trim();
+        const extractionText = extractionRaw
+          .trim()
+          .replace(/^```[\w]*\n?/i, '')
+          .replace(/\n?```$/i, '')
+          .trim();
 
         let structuredSchema: { tables: { name: string; columns: string[] }[] };
         try {
@@ -69,14 +77,11 @@ export class GenerateSqlTool {
           );
         }
 
-        // Render structured schema as an unambiguous list so the LLM cannot
-        // confuse which columns belong to which table.
         const formattedSchema = structuredSchema.tables
           .map((t) => `TABLE: ${t.name}\n  COLUMNS: ${t.columns.length > 0 ? t.columns.join(', ') : '(unknown — use SELECT *)'}`)
           .join('\n\n');
 
-        // Step 2: Generate SQL using only the structured schema.
-        const raw = await model.invoke([
+        const rawSql = await streamToText(model, [
           new SystemMessage(
             `You are a strict SQL query builder. Your ONLY job is to construct a safe SELECT query using EXCLUSIVELY the tables and columns listed in the schema below.\n\n` +
             `ABSOLUTE RULES — violating any of these makes the query invalid:\n` +
@@ -94,9 +99,7 @@ export class GenerateSqlTool {
           new HumanMessage(`Intent: ${intent}`),
         ]);
 
-        const content = raw.content;
-        let sql = typeof content === 'string' ? content.trim() : String(content).trim();
-        sql = sql.replace(/^```[\w]*\n?/i, '').replace(/\n?```$/i, '').trim();
+        let sql = rawSql.trim().replace(/^```[\w]*\n?/i, '').replace(/\n?```$/i, '').trim();
 
         if (sql.toUpperCase().startsWith('ERROR:')) {
           throw new Error(`SQL generation refused: ${sql}`);
@@ -111,6 +114,18 @@ export class GenerateSqlTool {
           requiresValidation: true,
         };
       },
-    });
+      {
+        name: 'generate_sql',
+        description:
+          'Convert a natural-language data intent into a SQL SELECT query. ' +
+          'Always follow with validate_sql before executing.',
+        schema: z.object({
+          intent: z.string().describe('Natural-language description of the data to retrieve'),
+          dialect: z.enum(['postgres', 'mysql', 'sqlite', 'mssql']).optional().default('mysql'),
+          schemaHint: z.string().optional().describe('Relevant table/column hints from context'),
+          rationale: z.string().optional().describe('Why this SQL satisfies the intent'),
+        }),
+      },
+    );
   }
 }

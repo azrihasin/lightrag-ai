@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { tool } from 'ai';
+import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
 
 const FieldSchema = z.object({
@@ -13,15 +13,13 @@ const FieldSchema = z.object({
 @Injectable()
 export class SyntheticTool {
   asTool() {
-    return tool({
-      description: 'Generate synthetic structured data matching a given schema.',
-      inputSchema: z.object({
-        entityName: z.string(),
-        fields: z.array(FieldSchema).min(1),
-        rowCount: z.number().int().min(1).max(200).optional().default(10),
-        seed: z.number().int().optional(),
-      }),
-      execute: async ({ entityName, fields, rowCount, seed }) => {
+    return tool(
+      async ({ entityName, fields, rowCount, seed }: {
+        entityName: string;
+        fields: z.infer<typeof FieldSchema>[];
+        rowCount?: number;
+        seed?: number;
+      }) => {
         const rng = this.makeRng(seed ?? Date.now());
         const rows = Array.from({ length: rowCount ?? 10 }, (_, i) => {
           const row: Record<string, unknown> = { id: i + 1 };
@@ -38,7 +36,17 @@ export class SyntheticTool {
           schema: fields,
         };
       },
-    });
+      {
+        name: 'synthetic_data',
+        description: 'Generate synthetic structured data matching a given schema.',
+        schema: z.object({
+          entityName: z.string(),
+          fields: z.array(FieldSchema).min(1),
+          rowCount: z.number().int().min(1).max(200).optional().default(10),
+          seed: z.number().int().optional(),
+        }),
+      },
+    );
   }
 
   private generateValue(field: z.infer<typeof FieldSchema>, rng: () => number): string | number | boolean | null {

@@ -1,8 +1,7 @@
 /**
  * Focused unit tests for the agent pipeline branches.
  *
- * Each test stubs only what is needed to exercise one branch.
- * Tool execute() functions are called directly — no LLM required.
+ * Each test exercises tool logic directly via invoke() — no LLM required.
  */
 
 import { RetrieveContextTool } from '../tools/retrieve-context.tool';
@@ -14,7 +13,6 @@ import { ExecuteSqlTool } from '../tools/execute-sql.tool';
 import { GenerateActionTool } from '../tools/generate-action.tool';
 import { ValidateActionTool } from '../tools/validate-action.tool';
 import { ExecuteSystemActionTool } from '../tools/execute-system-action.tool';
-import { InspectResultTool } from '../tools/inspect-result.tool';
 import { PrepareVisualizationTool } from '../tools/prepare-visualization.tool';
 import { RenderVisualizationTool } from '../tools/render-visualization.tool';
 import { HumanReviewGateTool } from '../tools/human-review-gate.tool';
@@ -27,29 +25,34 @@ function msg(content: string) {
   return { id: '1', role: 'user' as const, content, parts: [{ type: 'text' as const, text: content }], createdAt: undefined };
 }
 
+/** Invoke a LangChain tool and parse the JSON string result. */
+async function runTool(t: { invoke(i: unknown): Promise<unknown> }, args: unknown): Promise<any> {
+  const raw = await t.invoke(args);
+  return typeof raw === 'string' ? JSON.parse(raw) : raw;
+}
+
+const undef = undefined as any;
+
 // ── A. Direct-answer from context ──────────────────────────────────────────
 
 describe('retrieve_context → answer_from_context (direct answer branch)', () => {
-  const retrieveTool = new RetrieveContextTool();
+  const retrieveTool = new RetrieveContextTool(undef);
   const answerTool = new AnswerFromContextTool();
 
   it('retrieve_context returns sufficient=true when ≥2 docs', async () => {
-    const fn = retrieveTool.asTool().execute as Function;
-    const result = await fn({ query: 'What is NestJS?', mode: 'mix', topK: 5 });
+    const result = await runTool(retrieveTool.asTool(), { query: 'What is NestJS?', mode: 'mix', topK: 5 });
     expect(result.sufficient).toBe(true);
     expect(result.documents.length).toBeGreaterThanOrEqual(2);
     expect(result.query).toBe('What is NestJS?');
   });
 
   it('retrieve_context returns sufficient=false when maxDocuments=1', async () => {
-    const fn = retrieveTool.asTool().execute as Function;
-    const result = await fn({ query: 'obscure query', mode: 'naive', topK: 1 });
+    const result = await runTool(retrieveTool.asTool(), { query: 'obscure query', mode: 'naive', topK: 1 });
     expect(result.sufficient).toBe(false);
   });
 
   it('answer_from_context marks answer as sourced from lightrag', async () => {
-    const fn = answerTool.asTool().execute as Function;
-    const result = await fn({
+    const result = await runTool(answerTool.asTool(), {
       question: 'What is NestJS?',
       context: 'NestJS is a Node.js framework.',
       answerText: 'NestJS is a progressive Node.js framework.',
@@ -68,8 +71,7 @@ describe('clarification_request branch', () => {
   const tool = new ClarificationRequestTool();
 
   it('returns clarificationRequested=true with question and suggestions', async () => {
-    const fn = tool.asTool().execute as Function;
-    const result = await fn({
+    const result = await runTool(tool.asTool(), {
       question: 'Which table would you like to query?',
       reason: 'Multiple tables match the description',
       suggestions: ['orders', 'customers'],
@@ -83,21 +85,19 @@ describe('clarification_request branch', () => {
 // ── C. SQL validation / regeneration / execution ───────────────────────────
 
 describe('generate_sql → validate_sql → execute_sql', () => {
-  const genTool = new GenerateSqlTool();
+  const genTool = new GenerateSqlTool(undef);
   const valTool = new ValidateSqlTool();
-  const execTool = new ExecuteSqlTool();
+  const execTool = new ExecuteSqlTool(undef);
 
   it('generate_sql produces actionId and requiresValidation flag', async () => {
-    const fn = genTool.asTool().execute as Function;
-    const result = await fn({ intent: 'show all users', dialect: 'postgres' });
+    const result = await runTool(genTool.asTool(), { intent: 'show all users', dialect: 'postgres' });
     expect(result.actionId).toBeDefined();
     expect(result.sql).toMatch(/SELECT/i);
     expect(result.requiresValidation).toBe(true);
   });
 
   it('validate_sql passes a safe SELECT query', async () => {
-    const fn = valTool.asTool().execute as Function;
-    const result = await fn({
+    const result = await runTool(valTool.asTool(), {
       actionId: 'test-id',
       sql: 'SELECT id, name FROM users LIMIT 10',
       dialect: 'postgres',
@@ -108,8 +108,7 @@ describe('generate_sql → validate_sql → execute_sql', () => {
   });
 
   it('validate_sql blocks INSERT statement', async () => {
-    const fn = valTool.asTool().execute as Function;
-    const result = await fn({
+    const result = await runTool(valTool.asTool(), {
       actionId: 'test-id',
       sql: 'INSERT INTO users (name) VALUES (\'evil\')',
       dialect: 'postgres',
@@ -120,8 +119,7 @@ describe('generate_sql → validate_sql → execute_sql', () => {
   });
 
   it('validate_sql returns invalid_recoverable for non-SELECT query', async () => {
-    const fn = valTool.asTool().execute as Function;
-    const result = await fn({
+    const result = await runTool(valTool.asTool(), {
       actionId: 'test-id',
       sql: 'SHOW TABLES',
       dialect: 'mysql',
@@ -131,8 +129,7 @@ describe('generate_sql → validate_sql → execute_sql', () => {
   });
 
   it('validate_sql marks UNION as invalid_recoverable (medium risk)', async () => {
-    const fn = valTool.asTool().execute as Function;
-    const result = await fn({
+    const result = await runTool(valTool.asTool(), {
       actionId: 'test-id',
       sql: "SELECT 1 UNION SELECT password FROM users",
       dialect: 'postgres',
@@ -142,8 +139,7 @@ describe('generate_sql → validate_sql → execute_sql', () => {
   });
 
   it('execute_sql returns rows and columns', async () => {
-    const fn = execTool.asTool().execute as Function;
-    const result = await fn({ actionId: 'test-id', sql: 'SELECT * FROM users' });
+    const result = await runTool(execTool.asTool(), { actionId: 'test-id', sql: 'SELECT * FROM users' });
     expect(result.success).toBe(true);
     expect(Array.isArray(result.rows)).toBe(true);
     expect(result.rows.length).toBeGreaterThan(0);
@@ -160,8 +156,7 @@ describe('generate_action → validate_action → execute_system_action', () => 
   const execTool = new ExecuteSystemActionTool();
 
   it('generate_action produces actionId with type system_tool', async () => {
-    const fn = genTool.asTool().execute as Function;
-    const result = await fn({
+    const result = await runTool(genTool.asTool(), {
       intent: 'calculate 2 + 2',
       system: 'calculator',
       params: { expression: '2 + 2' },
@@ -173,8 +168,7 @@ describe('generate_action → validate_action → execute_system_action', () => 
   });
 
   it('validate_action passes valid calculator input', async () => {
-    const fn = valTool.asTool().execute as Function;
-    const result = await fn({
+    const result = await runTool(valTool.asTool(), {
       actionId: 'test-id',
       toolName: 'calculator',
       input: { expression: '2 + 2' },
@@ -183,8 +177,7 @@ describe('generate_action → validate_action → execute_system_action', () => 
   });
 
   it('validate_action returns invalid_recoverable for missing required field', async () => {
-    const fn = valTool.asTool().execute as Function;
-    const result = await fn({
+    const result = await runTool(valTool.asTool(), {
       actionId: 'test-id',
       toolName: 'calculator',
       input: { /* missing expression */ },
@@ -193,8 +186,7 @@ describe('generate_action → validate_action → execute_system_action', () => 
   });
 
   it('validate_action blocks unknown tool', async () => {
-    const fn = valTool.asTool().execute as Function;
-    const result = await fn({
+    const result = await runTool(valTool.asTool(), {
       actionId: 'test-id',
       toolName: 'unknown_system',
       input: {},
@@ -203,8 +195,7 @@ describe('generate_action → validate_action → execute_system_action', () => 
   });
 
   it('execute_system_action runs calculator', async () => {
-    const fn = execTool.asTool().execute as Function;
-    const result = await fn({
+    const result = await runTool(execTool.asTool(), {
       actionId: 'test-id',
       toolName: 'calculator',
       input: { expression: '10 * 5' },
@@ -214,8 +205,7 @@ describe('generate_action → validate_action → execute_system_action', () => 
   });
 
   it('execute_system_action runs generic_search', async () => {
-    const fn = execTool.asTool().execute as Function;
-    const result = await fn({
+    const result = await runTool(execTool.asTool(), {
       actionId: 'test-id',
       toolName: 'generic_search',
       input: { query: 'NestJS tutorial', maxResults: 3 },
@@ -227,8 +217,7 @@ describe('generate_action → validate_action → execute_system_action', () => 
   });
 
   it('execute_system_action generates synthetic data rows', async () => {
-    const fn = execTool.asTool().execute as Function;
-    const result = await fn({
+    const result = await runTool(execTool.asTool(), {
       actionId: 'test-id',
       toolName: 'synthetic_data',
       input: {
@@ -247,57 +236,6 @@ describe('generate_action → validate_action → execute_system_action', () => 
   });
 });
 
-// ── E. Incomplete-result looping (inspect_result) ─────────────────────────
-
-describe('inspect_result — complete vs partial', () => {
-  const tool = new InspectResultTool();
-
-  it('marks complete=true for results with rows', async () => {
-    const fn = tool.asTool().execute as Function;
-    const result = await fn({
-      actionId: 'test-id',
-      result: { rows: [{ id: 1, name: 'Alice' }], columns: ['id', 'name'] },
-      intent: 'get users',
-    });
-    expect(result.complete).toBe(true);
-    expect(result.quality).toBe('sufficient');
-  });
-
-  it('marks complete=false for empty rows', async () => {
-    const fn = tool.asTool().execute as Function;
-    const result = await fn({
-      actionId: 'test-id',
-      result: { rows: [], columns: ['id'] },
-      intent: 'get users',
-    });
-    expect(result.complete).toBe(false);
-    expect(result.quality).toBe('partial');
-  });
-
-  it('marks quality=failed on error result', async () => {
-    const fn = tool.asTool().execute as Function;
-    const result = await fn({
-      actionId: 'test-id',
-      result: { error: 'Connection timeout' },
-      intent: 'get users',
-    });
-    expect(result.quality).toBe('failed');
-    expect(result.complete).toBe(false);
-  });
-
-  it('extracts dataShape with hasNumericCols', async () => {
-    const fn = tool.asTool().execute as Function;
-    const result = await fn({
-      actionId: 'test-id',
-      result: {
-        rows: [{ id: 1, value: 42 }],
-        columns: ['id', 'value'],
-      },
-      intent: 'get metrics',
-    });
-    expect((result.dataShape as Record<string, unknown>)?.hasNumericCols).toBe(true);
-  });
-});
 
 // ── F. Visualization branch ────────────────────────────────────────────────
 
@@ -306,9 +244,8 @@ describe('prepare_visualization_data → render_visualization', () => {
   const renderTool = new RenderVisualizationTool();
 
   it('selects chart for numeric rows > 3', async () => {
-    const fn = prepTool.asTool().execute as Function;
     const rows = [1, 2, 3, 4].map((i) => ({ id: i, value: i * 10 }));
-    const result = await fn({
+    const result = await runTool(prepTool.asTool(), {
       result: { rows, columns: ['id', 'value'] },
       dataShape: { hasNumericCols: true, numericCols: ['value'], columns: ['id', 'value'] },
     });
@@ -318,9 +255,8 @@ describe('prepare_visualization_data → render_visualization', () => {
   });
 
   it('selects table for non-numeric rows', async () => {
-    const fn = prepTool.asTool().execute as Function;
     const rows = [{ id: 1, name: 'Alice' }];
-    const result = await fn({
+    const result = await runTool(prepTool.asTool(), {
       result: { rows, columns: ['id', 'name'] },
       dataShape: { hasNumericCols: false, numericCols: [], columns: ['id', 'name'] },
     });
@@ -329,8 +265,7 @@ describe('prepare_visualization_data → render_visualization', () => {
   });
 
   it('selects metric-card for scalar result', async () => {
-    const fn = prepTool.asTool().execute as Function;
-    const result = await fn({
+    const result = await runTool(prepTool.asTool(), {
       result: { result: 42, expression: '6 * 7' },
     });
     expect(result.suitable).toBe(true);
@@ -339,14 +274,12 @@ describe('prepare_visualization_data → render_visualization', () => {
   });
 
   it('returns suitable=false for empty result', async () => {
-    const fn = prepTool.asTool().execute as Function;
-    const result = await fn({ result: {} });
+    const result = await runTool(prepTool.asTool(), { result: {} });
     expect(result.suitable).toBe(false);
   });
 
   it('render_visualization wraps props into dataSpec', async () => {
-    const fn = renderTool.asTool().execute as Function;
-    const result = await fn({
+    const result = await runTool(renderTool.asTool(), {
       componentType: 'chart',
       props: { chartType: 'bar', data: [], xKey: 'id', yKeys: ['value'] },
     });
@@ -362,8 +295,7 @@ describe('human_review_gate (risky/unsafe branch)', () => {
   const tool = new HumanReviewGateTool();
 
   it('sets reviewNeeded=true with riskLevel and reason', async () => {
-    const fn = tool.asTool().execute as Function;
-    const result = await fn({
+    const result = await runTool(tool.asTool(), {
       reason: 'SQL attempts to read sensitive data',
       actionId: 'action-abc',
       riskLevel: 'high',
@@ -374,8 +306,7 @@ describe('human_review_gate (risky/unsafe branch)', () => {
   });
 
   it('provides a default safe fallback message', async () => {
-    const fn = tool.asTool().execute as Function;
-    const result = await fn({
+    const result = await runTool(tool.asTool(), {
       reason: 'Potentially risky operation',
       riskLevel: 'medium',
     });
@@ -411,16 +342,14 @@ describe('summarize_result', () => {
   const tool = new SummarizeResultTool();
 
   it('summarizes row results with preview', async () => {
-    const fn = tool.asTool().execute as Function;
     const rows = Array.from({ length: 5 }, (_, i) => ({ id: i + 1, name: `User ${i + 1}` }));
-    const result = await fn({ result: { rows }, intent: 'list users' });
+    const result = await runTool(tool.asTool(), { result: { rows }, intent: 'list users' });
     expect(result.summary).toContain('5 result');
     expect(result.summary).toContain('Row 1');
   });
 
   it('summarizes scalar answer', async () => {
-    const fn = tool.asTool().execute as Function;
-    const result = await fn({ result: { answer: 'Paris is the capital of France.' }, intent: 'capital city' });
+    const result = await runTool(tool.asTool(), { result: { answer: 'Paris is the capital of France.' }, intent: 'capital city' });
     expect(result.summary).toBe('Paris is the capital of France.');
   });
 });

@@ -1,34 +1,13 @@
 import { Injectable } from '@nestjs/common';
-import { tool } from 'ai';
+import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
 import type { UiComponentType } from '../dto/sse-event.dto';
 
 @Injectable()
 export class PrepareVisualizationTool {
   asTool() {
-    return tool({
-      description:
-        'Determine whether visualization is suitable and prepare structured data for rendering. ' +
-        'Call after inspect_result when result has tabular or numeric data.',
-      inputSchema: z.object({
-        result: z.unknown(),
-        dataShape: z
-          .object({
-            rowCount: z.number().optional(),
-            columns: z.array(z.string()).optional(),
-            hasNumericCols: z.boolean().optional(),
-            numericCols: z.array(z.string()).optional(),
-          })
-          .optional(),
-        preferredType: z
-          .enum(['table', 'chart', 'list', 'metric-card', 'json-tree'])
-          .optional(),
-      }),
-      execute: async ({ result, dataShape, preferredType }): Promise<{
-        suitable: boolean;
-        componentType: UiComponentType;
-        props: Record<string, unknown>;
-      }> => {
+    return tool(
+      async ({ result, dataShape, preferredType }): Promise<{ suitable: boolean; componentType: UiComponentType; props: Record<string, unknown> }> => {
         const r = result as Record<string, unknown>;
         const rows = r?.rows as Record<string, unknown>[] | undefined;
         const columns = (dataShape?.columns ?? r?.columns) as string[] | undefined;
@@ -80,6 +59,26 @@ export class PrepareVisualizationTool {
 
         return { suitable: false, componentType: 'text', props: {} };
       },
-    });
+      {
+        name: 'prepare_visualization_data',
+        description:
+          'Determine whether visualization is suitable and prepare structured data for rendering. ' +
+          'Call after inspect_result when result has tabular or numeric data.',
+        schema: z.object({
+          result: z.unknown(),
+          dataShape: z
+            .object({
+              rowCount: z.number().optional(),
+              columns: z.array(z.string()).optional(),
+              hasNumericCols: z.boolean().optional(),
+              numericCols: z.array(z.string()).optional(),
+            })
+            .optional(),
+          preferredType: z
+            .enum(['table', 'chart', 'list', 'metric-card', 'json-tree'])
+            .optional(),
+        }),
+      },
+    );
   }
 }

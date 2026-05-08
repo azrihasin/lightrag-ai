@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectPinoLogger, PinoLogger } from 'nestjs-pino';
-import { tool } from 'ai';
+import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
 
 const LIGHTRAG_API_URL = process.env.LIGHTRAG_API_URL ?? 'http://localhost:5174';
@@ -14,18 +14,8 @@ export class RetrieveContextTool {
   asTool() {
     const logger = this.logger;
 
-    return tool({
-      description:
-        'Retrieve relevant context from the LightRAG knowledge base. Always call this first before any other tool.',
-      inputSchema: z.object({
-        query: z.string().describe('The user query or intent to retrieve context for'),
-        mode: z
-          .enum(['local', 'global', 'hybrid', 'naive', 'mix', 'bypass'])
-          .optional()
-          .default('mix'),
-        topK: z.number().int().min(1).max(20).optional().default(10),
-      }),
-      execute: async ({ query, mode, topK }) => {
+    return tool(
+      async ({ query, mode, topK }) => {
         logger.info({ query, mode, topK, url: LIGHTRAG_API_URL }, 'Querying LightRAG /query/stream');
 
         try {
@@ -53,7 +43,6 @@ export class RetrieveContextTool {
             };
           }
 
-          // Read the full NDJSON body and split by newline
           const rawBody = await res.text();
           logger.debug({ rawLength: rawBody.length, preview: rawBody.slice(0, 500) }, 'LightRAG stream raw body');
 
@@ -96,7 +85,6 @@ export class RetrieveContextTool {
             };
           }
 
-          // Build documents: the synthesized answer + one entry per reference
           const documents: Array<{
             id: string;
             title: string;
@@ -125,7 +113,7 @@ export class RetrieveContextTool {
             });
           });
 
-          const sufficient = documents.length > 0;
+          const sufficient = fullResponse.length > 100;
           logger.info(
             { query, answerLength: fullResponse.length, referenceCount: references.length, sufficient },
             'LightRAG /query/stream succeeded',
@@ -151,6 +139,19 @@ export class RetrieveContextTool {
           };
         }
       },
-    });
+      {
+        name: 'retrieve_context',
+        description:
+          'Retrieve relevant context from the LightRAG knowledge base. Always call this first before any other tool.',
+        schema: z.object({
+          query: z.string().describe('The user query or intent to retrieve context for'),
+          mode: z
+            .enum(['local', 'global', 'hybrid', 'naive', 'mix', 'bypass'])
+            .optional()
+            .default('mix'),
+          topK: z.number().int().min(1).max(20).optional().default(10),
+        }),
+      },
+    );
   }
 }

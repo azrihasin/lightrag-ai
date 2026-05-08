@@ -1,5 +1,5 @@
 import { Injectable, Inject } from '@nestjs/common';
-import { tool } from 'ai';
+import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
 import { sql } from 'drizzle-orm';
 import { MySql2Database } from 'drizzle-orm/mysql2';
@@ -10,15 +10,8 @@ export class ExecuteSqlTool {
   constructor(@Inject(DRIZZLE) private readonly db: MySql2Database) {}
 
   asTool() {
-    return tool({
-      description:
-        'Execute a validated SQL SELECT query. Requires a validated actionId from validate_sql (status must be "valid").',
-      inputSchema: z.object({
-        actionId: z.string(),
-        sql: z.string(),
-        params: z.record(z.string(), z.unknown()).optional(),
-      }),
-      execute: async ({ actionId, sql: rawSql }) => {
+    return tool(
+      async ({ actionId, sql: rawSql }) => {
         const t0 = Date.now();
 
         const [rawRows] = await this.db.execute(sql.raw(rawSql));
@@ -36,6 +29,16 @@ export class ExecuteSqlTool {
           success: true,
         };
       },
-    });
+      {
+        name: 'execute_sql',
+        description:
+          'Execute a validated SQL SELECT query. Requires a validated actionId from validate_sql (status must be "valid").',
+        schema: z.object({
+          actionId: z.string(),
+          sql: z.string(),
+          params: z.record(z.string(), z.unknown()).optional(),
+        }),
+      },
+    );
   }
 }

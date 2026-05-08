@@ -28,7 +28,7 @@ const TOOL_AGENT_MAP: Record<string, string> = {
   execute_system_action: "Action Agent",
 
   // Phase 3 – Result & Visualization
-  inspect_result: "Result Inspector",
+  decide_visualization: "Visualization Agent",
   decide_next_step: "Decision Agent",
   prepare_visualization_data: "Visualization Agent",
   render_visualization: "Visualization Agent",

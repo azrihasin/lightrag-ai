@@ -9,7 +9,6 @@ import { ExecuteSqlTool } from './execute-sql.tool';
 import { GenerateActionTool } from './generate-action.tool';
 import { ValidateActionTool } from './validate-action.tool';
 import { ExecuteSystemActionTool } from './execute-system-action.tool';
-import { InspectResultTool } from './inspect-result.tool';
 import { PrepareVisualizationTool } from './prepare-visualization.tool';
 import { RenderVisualizationTool } from './render-visualization.tool';
 import { HumanReviewGateTool } from './human-review-gate.tool';
@@ -38,7 +37,6 @@ export class ToolRegistry {
     private readonly generateAction: GenerateActionTool,
     private readonly validateAction: ValidateActionTool,
     private readonly executeSystemAction: ExecuteSystemActionTool,
-    private readonly inspectResult: InspectResultTool,
     private readonly prepareVisualization: PrepareVisualizationTool,
     private readonly renderVisualization: RenderVisualizationTool,
     private readonly humanReviewGate: HumanReviewGateTool,
@@ -49,24 +47,27 @@ export class ToolRegistry {
 
   getAll() {
     return {
-      retrieve_context: this.retrieveContext.asTool(),
-      answer_from_context: this.answerFromContext.asTool(),
-      clarification_request: this.clarificationRequest.asTool(),
-      generic_search: this.genericSearch.asTool(),
-      generate_sql: this.generateSql.asTool(),
-      validate_sql: this.validateSql.asTool(),
-      execute_sql: this.executeSql.asTool(),
-      generate_action: this.generateAction.asTool(),
-      validate_action: this.validateAction.asTool(),
-      execute_system_action: this.executeSystemAction.asTool(),
-      inspect_result: this.inspectResult.asTool(),
+      retrieve_context:         this.retrieveContext.asTool(),
+      answer_from_context:      this.answerFromContext.asTool(),
+      clarification_request:    this.clarificationRequest.asTool(),
+      generic_search:           this.genericSearch.asTool(),
+      generate_sql:             this.generateSql.asTool(),
+      validate_sql:             this.validateSql.asTool(),
+      execute_sql:              this.executeSql.asTool(),
+      generate_action:          this.generateAction.asTool(),
+      validate_action:          this.validateAction.asTool(),
+      execute_system_action:    this.executeSystemAction.asTool(),
       prepare_visualization_data: this.prepareVisualization.asTool(),
-      render_visualization: this.renderVisualization.asTool(),
-      human_review_gate: this.humanReviewGate.asTool(),
-      summarize_result: this.summarizeResult.asTool(),
-      compose_final_response: this.composeResponse.asTool(),
-      calculator: this.calculator.asTool(),
+      render_visualization:     this.renderVisualization.asTool(),
+      human_review_gate:        this.humanReviewGate.asTool(),
+      summarize_result:         this.summarizeResult.asTool(),
+      compose_final_response:   this.composeResponse.asTool(),
+      calculator:               this.calculator.asTool(),
     };
+  }
+
+  asList() {
+    return Object.values(this.getAll());
   }
 
   sanitize(raw: unknown): unknown {

@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { tool } from 'ai';
+import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
 
 const FieldSchema = z.object({
@@ -45,21 +45,14 @@ function genValue(field: z.infer<typeof FieldSchema>, rng: () => number): unknow
 @Injectable()
 export class ExecuteSystemActionTool {
   asTool() {
-    return tool({
-      description:
-        'Execute a validated non-SQL system action. Routes to calculator, generic_search, synthetic_data, or external_api.',
-      inputSchema: z.object({
-        actionId: z.string(),
-        toolName: z.string(),
-        input: z.record(z.string(), z.unknown()),
-      }),
-      execute: async ({ actionId, toolName, input }) => {
+    return tool(
+      async ({ actionId, toolName, input }) => {
         const t0 = Date.now();
         try {
           let result: unknown;
 
           if (toolName === 'calculator') {
-            const expr = String((input as Record<string, unknown>).expression ?? '');
+            const expr = String(input.expression ?? '');
             if (!/^[\d\s+\-*/().%^,e]+$/i.test(expr)) {
               result = { error: 'Expression contains disallowed characters.' };
             } else {
@@ -70,8 +63,8 @@ export class ExecuteSystemActionTool {
                   : { error: 'Expression did not yield a finite number.' };
             }
           } else if (toolName === 'generic_search') {
-            const query = String((input as Record<string, unknown>).query ?? '');
-            const max = Number((input as Record<string, unknown>).maxResults ?? 5);
+            const query = String(input.query ?? '');
+            const max = Number(input.maxResults ?? 5);
             result = {
               query,
               results: Array.from({ length: max }, (_, i) => ({
@@ -82,17 +75,16 @@ export class ExecuteSystemActionTool {
               })),
             };
           } else if (toolName === 'synthetic_data') {
-            const inp = input as Record<string, unknown>;
-            const fields = (inp.fields as z.infer<typeof FieldSchema>[]) ?? [];
-            const rowCount = Number(inp.rowCount ?? 10);
-            const rng = makeRng(Number(inp.seed ?? Date.now()));
+            const fields = (input.fields as z.infer<typeof FieldSchema>[]) ?? [];
+            const rowCount = Number(input.rowCount ?? 10);
+            const rng = makeRng(Number(input.seed ?? Date.now()));
             const rows = Array.from({ length: rowCount }, (_, i) => {
               const row: Record<string, unknown> = { id: i + 1 };
               for (const f of fields) row[f.name] = genValue(f, rng);
               return row;
             });
             result = {
-              entityName: inp.entityName ?? 'entity',
+              entityName: input.entityName ?? 'entity',
               columns: ['id', ...fields.map((f) => f.name)],
               rows,
               rowCount: rows.length,
@@ -114,6 +106,16 @@ export class ExecuteSystemActionTool {
           };
         }
       },
-    });
+      {
+        name: 'execute_system_action',
+        description:
+          'Execute a validated non-SQL system action. Routes to calculator, generic_search, synthetic_data, or external_api.',
+        schema: z.object({
+          actionId: z.string(),
+          toolName: z.string(),
+          input: z.record(z.string(), z.unknown()),
+        }),
+      },
+    );
   }
 }

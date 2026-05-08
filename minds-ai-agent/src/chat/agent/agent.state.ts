@@ -5,7 +5,7 @@ export type ActionType = 'direct_answer' | 'clarification' | 'sql' | 'system_too
 export type ValidationStatus = 'pending' | 'valid' | 'invalid_recoverable' | 'invalid_blocking';
 export type ExecutionStatus = 'pending' | 'running' | 'success' | 'error';
 export type TerminalStatus = 'complete' | 'clarification_sent' | 'review_needed' | 'max_steps_reached';
-export type NextStepType = 'another_query' | 'another_system' | 'human_decision' | 'complete';
+export type NextStepType = 'another_query' | 'another_system' | 'human_decision' | 'done';
 export type RiskLevel = 'safe' | 'low' | 'medium' | 'high';
 export type Strategy = 'direct' | 'sql' | 'system_tool' | 'hybrid' | 'unknown' | 'data_crosscheck' | 'data_passthrough';
 

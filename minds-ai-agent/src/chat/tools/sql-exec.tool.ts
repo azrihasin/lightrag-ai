@@ -1,17 +1,12 @@
 import { Injectable } from '@nestjs/common';
-import { tool } from 'ai';
+import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
 
 @Injectable()
 export class SqlExecTool {
   asTool() {
-    return tool({
-      description: 'Execute a SQL SELECT query and return rows.',
-      inputSchema: z.object({
-        sql: z.string(),
-        maxRows: z.number().int().min(1).max(500).optional().default(50),
-      }),
-      execute: async ({ sql, maxRows }) => {
+    return tool(
+      async ({ sql, maxRows }: { sql: string; maxRows?: number }) => {
         if (/^\s*(insert|update|delete|drop|alter|create|truncate)/i.test(sql.trim())) {
           return { error: 'Only SELECT queries are allowed.' };
         }
@@ -22,6 +17,14 @@ export class SqlExecTool {
         }));
         return { rows, rowCount: rows.length, sql, columns: ['id', 'name', 'value'] };
       },
-    });
+      {
+        name: 'sql_exec',
+        description: 'Execute a SQL SELECT query and return rows.',
+        schema: z.object({
+          sql: z.string(),
+          maxRows: z.number().int().min(1).max(500).optional().default(50),
+        }),
+      },
+    );
   }
 }

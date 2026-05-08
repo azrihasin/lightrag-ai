@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { tool } from 'ai';
+import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
 import type { ValidationStatus } from '../agent/agent.state';
 
@@ -16,20 +16,8 @@ const TOOL_SCHEMAS: Record<string, z.ZodTypeAny> = {
 @Injectable()
 export class ValidateActionTool {
   asTool() {
-    return tool({
-      description:
-        'Validate a system/tool action schema before execution. ' +
-        'Returns valid | invalid_recoverable | invalid_blocking.',
-      inputSchema: z.object({
-        actionId: z.string(),
-        toolName: z.string(),
-        input: z.record(z.string(), z.unknown()),
-      }),
-      execute: async ({ actionId, toolName, input }): Promise<{
-        actionId: string;
-        status: ValidationStatus;
-        reason: string;
-      }> => {
+    return tool(
+      async ({ actionId, toolName, input }): Promise<{ actionId: string; status: ValidationStatus; reason: string }> => {
         const schema = TOOL_SCHEMAS[toolName];
         if (!schema) {
           return { actionId, status: 'invalid_blocking', reason: `Unknown tool: ${toolName}` };
@@ -44,6 +32,17 @@ export class ValidateActionTool {
         }
         return { actionId, status: 'valid', reason: 'Action passed schema validation' };
       },
-    });
+      {
+        name: 'validate_action',
+        description:
+          'Validate a system/tool action schema before execution. ' +
+          'Returns valid | invalid_recoverable | invalid_blocking.',
+        schema: z.object({
+          actionId: z.string(),
+          toolName: z.string(),
+          input: z.record(z.string(), z.unknown()),
+        }),
+      },
+    );
   }
 }

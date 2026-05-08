@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { tool } from 'ai';
+import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
 import type { ValidationStatus } from '../agent/agent.state';
 
@@ -10,16 +10,8 @@ const RECOVER_PATTERN = /\b(UNION\s+ALL|UNION|INTO\s+OUTFILE|LOAD_FILE|BENCHMARK
 @Injectable()
 export class ValidateSqlTool {
   asTool() {
-    return tool({
-      description:
-        'Validate SQL safety and dialect compliance before execution. ' +
-        'Returns valid | invalid_recoverable | invalid_blocking. Must be called before execute_sql.',
-      inputSchema: z.object({
-        actionId: z.string(),
-        sql: z.string(),
-        dialect: z.enum(['postgres', 'mysql', 'sqlite', 'mssql']).optional().default('postgres'),
-      }),
-      execute: async ({ actionId, sql, dialect }): Promise<{
+    return tool(
+      async ({ actionId, sql, dialect }): Promise<{
         actionId: string;
         status: ValidationStatus;
         reason: string;
@@ -63,6 +55,17 @@ export class ValidateSqlTool {
           riskLevel: 'safe',
         };
       },
-    });
+      {
+        name: 'validate_sql',
+        description:
+          'Validate SQL safety and dialect compliance before execution. ' +
+          'Returns valid | invalid_recoverable | invalid_blocking. Must be called before execute_sql.',
+        schema: z.object({
+          actionId: z.string(),
+          sql: z.string(),
+          dialect: z.enum(['postgres', 'mysql', 'sqlite', 'mssql']).optional().default('postgres'),
+        }),
+      },
+    );
   }
 }

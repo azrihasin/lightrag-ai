@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useEffect, useMemo } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import { useSyncExternalStore } from "react";
 import type { ToolCallMessagePartComponent, ToolCallMessagePartStatus } from "@assistant-ui/react";
 import { ToolFallback } from "@/components/assistant-ui/tool-fallback";
@@ -17,7 +17,16 @@ import {
   TableHead,
   TableCell,
 } from "@/components/ui/table";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationPrevious,
+  PaginationNext,
+} from "@/components/ui/pagination";
 import { useSqlTableStreamStore } from "@/lib/sql-table-stream";
+
+const PAGE_SIZE = 10;
 
 // ---------------------------------------------------------------------------
 // Module-level store
@@ -94,11 +103,17 @@ function subscribeStore(fn: () => void): () => void {
 // ---------------------------------------------------------------------------
 function SqlExecutionBlock({ snap }: { snap: ExecutionSnapshot }) {
   const isRunning = snap.status?.type === "running";
+  const [page, setPage] = useState(0);
 
   // Live table data accumulating from structured sql-table-* events.
   const tableData = useSqlTableStreamStore(
     (s) => s.tables[snap.toolCallId] ?? null,
   );
+
+  // Reset to first page whenever the result set changes identity.
+  useEffect(() => {
+    setPage(0);
+  }, [snap.toolCallId]);
 
   // Detect error from the final JSON result (success: false case).
   const errorMessage = useMemo<string | null>(() => {
@@ -115,6 +130,12 @@ function SqlExecutionBlock({ snap }: { snap: ExecutionSnapshot }) {
   }, [snap.result]);
 
   const hasTableData = tableData !== null && tableData.columns.length > 0;
+
+  const totalRows = tableData?.rows.length ?? 0;
+  const totalPages = Math.max(1, Math.ceil(totalRows / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages - 1);
+  const pagedRows = tableData?.rows.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE) ?? [];
+  const showPagination = totalRows > PAGE_SIZE;
 
   return (
     <div className="mt-2 border-t border-dashed pt-2">
@@ -146,8 +167,8 @@ function SqlExecutionBlock({ snap }: { snap: ExecutionSnapshot }) {
                       </TableCell>
                     </TableRow>
                   ) : (
-                    tableData.rows.map((row, i) => (
-                      <TableRow key={i}>
+                    pagedRows.map((row, i) => (
+                      <TableRow key={safePage * PAGE_SIZE + i}>
                         {tableData.columns.map((col) => {
                           const cell = row[col];
                           return (
@@ -173,12 +194,38 @@ function SqlExecutionBlock({ snap }: { snap: ExecutionSnapshot }) {
                   )}
                 </TableBody>
               </Table>
-              {tableData.isComplete && (
-                <div className="text-muted-foreground border-t px-3 py-1.5 text-xs">
-                  {tableData.rowCount ?? tableData.rows.length} row
-                  {(tableData.rowCount ?? tableData.rows.length) !== 1 ? "s" : ""}
-                </div>
-              )}
+              <div className="flex items-center justify-between border-t px-3 py-1.5">
+                <span className="text-muted-foreground text-xs">
+                  {tableData.isComplete
+                    ? `${tableData.rowCount ?? totalRows} row${(tableData.rowCount ?? totalRows) !== 1 ? "s" : ""}`
+                    : `${totalRows} row${totalRows !== 1 ? "s" : ""} so far…`}
+                </span>
+                {showPagination && (
+                  <div className="flex items-center gap-3">
+                    <span className="text-muted-foreground text-xs">
+                      Page {safePage + 1} of {totalPages}
+                    </span>
+                    <Pagination className="w-auto mx-0">
+                      <PaginationContent>
+                        <PaginationItem>
+                          <PaginationPrevious
+                            aria-disabled={safePage === 0}
+                            className={safePage === 0 ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                            onClick={() => setPage((p) => Math.max(0, p - 1))}
+                          />
+                        </PaginationItem>
+                        <PaginationItem>
+                          <PaginationNext
+                            aria-disabled={safePage >= totalPages - 1}
+                            className={safePage >= totalPages - 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                            onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+                          />
+                        </PaginationItem>
+                      </PaginationContent>
+                    </Pagination>
+                  </div>
+                )}
+              </div>
             </div>
           ) : !isRunning && snap.result ? (
             <ToolFallback

@@ -16,6 +16,7 @@ import { useProgressStore } from "./progress-store";
 import { useToolAnnotationStore } from "./tool-annotation-stream";
 import { useSqlTableStreamStore } from "./sql-table-stream";
 import { useSqlGeneratedStore } from "./sql-generated-store";
+import { useJmespathStore } from "./jmespath-store";
 
 type FetchFn = typeof globalThis.fetch;
 
@@ -60,6 +61,13 @@ export function createStreamingFetch(): FetchFn {
                 useSqlGeneratedStore
                   .getState()
                   .setQuery(event.toolCallId, event.sql ?? "", event.dialect ?? "postgres");
+                continue;
+              }
+
+              if (event.type === "jmespath-query") {
+                useJmespathStore
+                  .getState()
+                  .setEntry(event.toolCallId, event.query ?? "", event.component ?? "");
                 continue;
               }
 

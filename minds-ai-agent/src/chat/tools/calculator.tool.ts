@@ -1,17 +1,12 @@
 import { Injectable } from '@nestjs/common';
-import { tool } from 'ai';
+import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
 
 @Injectable()
 export class CalculatorTool {
   asTool() {
-    return tool({
-      description: 'Evaluate mathematical expressions or perform numerical computations.',
-      inputSchema: z.object({
-        expression: z.string(),
-        precision: z.number().int().min(0).max(15).optional().default(4),
-      }),
-      execute: async ({ expression, precision }) => {
+    return tool(
+      async ({ expression, precision }) => {
         try {
           if (!/^[\d\s+\-*/().%^,e]+$/i.test(expression)) {
             return { error: 'Expression contains disallowed characters.' };
@@ -29,6 +24,14 @@ export class CalculatorTool {
           return { error: `Evaluation failed: ${(err as Error).message}` };
         }
       },
-    });
+      {
+        name: 'calculator',
+        description: 'Evaluate mathematical expressions or perform numerical computations.',
+        schema: z.object({
+          expression: z.string(),
+          precision: z.number().int().min(0).max(15).optional().default(4),
+        }),
+      },
+    );
   }
 }

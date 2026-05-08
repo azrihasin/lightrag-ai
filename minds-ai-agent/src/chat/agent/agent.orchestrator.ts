@@ -1,25 +1,17 @@
 import { Injectable } from '@nestjs/common';
+import { createReactAgent } from '@langchain/langgraph/prebuilt';
+import { HumanMessage, AIMessage, SystemMessage } from '@langchain/core/messages';
 import {
-  streamText,
   createUIMessageStream,
   pipeUIMessageStreamToResponse,
-  stepCountIs,
 } from 'ai';
+import { randomUUID } from 'node:crypto';
 import type { Response } from 'express';
 import { ToolRegistry } from '../tools/tool-registry';
 import { ModelProvider } from '../providers/model.provider';
 import { UiDiscoveryService } from '../discovery/ui-discovery.service';
 import type { ChatRequestDto } from '../dto/chat-request.dto';
 import type { DataSpecPayload } from '../dto/sse-event.dto';
-import {
-  createInitialState,
-  type AgentState,
-  type Action,
-  type ExecutionResult,
-  type ValidationResult,
-} from './agent.state';
-
-const MAX_STEPS = 12;
 
 const SYSTEM_PROMPT = `You are a precise AI agent. Follow this pipeline strictly for every request:
 
@@ -45,8 +37,6 @@ RULES:
 - NEVER call execute_system_action without a preceding validate_action with status "valid"
 - Keep internal reasoning private; stream only safe, user-facing content`;
 
-type CoreMsg = { role: 'user' | 'assistant' | 'system'; content: string };
-
 @Injectable()
 export class AgentOrchestrator {
   constructor(
@@ -56,216 +46,67 @@ export class AgentOrchestrator {
   ) {}
 
   run(dto: ChatRequestDto, enableUiDiscovery: boolean, res: Response): void {
-    const state = createInitialState(dto.messages);
-    const model = this.modelProvider.getModel();
-    const tools = this.toolRegistry.getAll();
+    const model = this.modelProvider.getChatModel();
+    const tools = this.toolRegistry.asList();
 
-    const messages: CoreMsg[] = dto.messages.map((m) => ({
-      role: m.role as 'user' | 'assistant' | 'system',
-      content: m.content,
-    }));
-
-    let uiWriter: { write: (part: unknown) => void } | null = null;
-
-    const result = streamText({
-      model,
-      system: SYSTEM_PROMPT,
-      messages,
+    const agent = createReactAgent({
+      llm: model,
       tools,
-      stopWhen: stepCountIs(MAX_STEPS),
-      onStepFinish: ({ toolResults }) => {
-        if (!toolResults?.length) return;
+      messageModifier: SYSTEM_PROMPT,
+    });
 
-        state.stepCount++;
+    const lcMessages = dto.messages.map((m) => {
+      if (m.role === 'user') return new HumanMessage(m.content);
+      if (m.role === 'system') return new SystemMessage(m.content);
+      return new AIMessage(m.content);
+    });
 
-        for (const tr of toolResults as Array<{
-          toolCallId: string;
-          toolName: string;
-          result?: unknown;
-          output?: unknown;
-        }>) {
-          const raw = ((tr.result ?? tr.output) ?? {}) as Record<string, unknown>;
-          this.applyToolResultToState(tr.toolName, raw, state);
+    const uiStream = createUIMessageStream({
+      execute: async ({ writer }) => {
+        let openTextId: string | null = null;
 
-          if (enableUiDiscovery && uiWriter) {
-            this.maybeEmitDataSpec(tr.toolName, raw, uiWriter);
+        try {
+          const agentStream = await agent.stream(
+            { messages: lcMessages },
+            { streamMode: 'messages' },
+          );
+
+          for await (const [chunk, metadata] of agentStream as AsyncIterable<[{ content: unknown; tool_calls?: unknown[] }, Record<string, unknown>]>) {
+            const node = metadata?.langgraph_node as string | undefined;
+            if (node !== 'agent') continue;
+
+            // Emit UI discovery annotations for tool outputs when enabled
+            if (enableUiDiscovery && Array.isArray((chunk as any).tool_calls)) {
+              for (const tc of (chunk as any).tool_calls as Array<{ name: string; id: string }>) {
+                const discovery = this.uiDiscovery.inspect({
+                  toolName: tc.name,
+                  toolCallId: tc.id ?? randomUUID(),
+                  output: null,
+                  sanitized: true,
+                  durationMs: 0,
+                });
+                if (discovery) {
+                  const dataSpec = this.uiDiscovery.buildDataSpec(discovery) as DataSpecPayload;
+                  writer.write({ type: 'data-spec', data: { componentType: dataSpec.componentType, props: dataSpec.props } });
+                }
+              }
+            }
+
+            const content = typeof chunk.content === 'string' ? chunk.content : '';
+            if (!content) continue;
+
+            if (!openTextId) {
+              openTextId = randomUUID();
+              writer.write({ type: 'text-start', id: openTextId });
+            }
+            writer.write({ type: 'text-delta', id: openTextId, delta: content });
           }
+        } finally {
+          if (openTextId) writer.write({ type: 'text-end', id: openTextId });
         }
       },
     });
 
-    const stream = createUIMessageStream({
-      execute: ({ writer }) => {
-        uiWriter = writer as unknown as { write: (part: unknown) => void };
-        (writer as unknown as { merge: (s: unknown) => void }).merge(result.toUIMessageStream());
-      },
-    });
-
-    pipeUIMessageStreamToResponse({ response: res, stream });
-  }
-
-  // ── state mutation ──────────────────────────────────────────────────────────
-
-  private applyToolResultToState(
-    toolName: string,
-    output: Record<string, unknown>,
-    state: AgentState,
-  ): void {
-    switch (toolName) {
-      case 'retrieve_context':
-        state.retrievedContext = {
-          documents: (output.documents as unknown[]) ?? [],
-          query: String(output.query ?? ''),
-          sufficient: Boolean(output.sufficient),
-          contextSummary: output.contextSummary as string | undefined,
-        };
-        break;
-
-      case 'answer_from_context':
-        state.directAnswerEligible = true;
-        state.finalResponseDraft = String(output.answer ?? '');
-        state.terminalStatus = 'complete';
-        break;
-
-      case 'clarification_request':
-        state.clarificationNeeded = true;
-        state.terminalStatus = 'clarification_sent';
-        break;
-
-      case 'generate_sql':
-      case 'generate_action': {
-        const id = String(output.actionId ?? '');
-        const prev = state.pendingAction?.id === id ? state.pendingAction : null;
-        const action: Action = {
-          id,
-          type: toolName === 'generate_sql' ? 'sql' : 'system_tool',
-          rationale: String(output.rationale ?? ''),
-          input: { sql: output.sql, ...(output.input as object | undefined) },
-          validationState: 'pending',
-          executionState: 'pending',
-          resultSummary: null,
-          retryCount: prev ? prev.retryCount + 1 : 0,
-        };
-        state.pendingAction = action;
-        break;
-      }
-
-      case 'validate_sql':
-      case 'validate_action': {
-        const vr: ValidationResult = {
-          actionId: String(output.actionId ?? ''),
-          status: output.status as ValidationResult['status'],
-          reason: output.reason as string | undefined,
-        };
-        state.validationResults.push(vr);
-        if (state.pendingAction) state.pendingAction.validationState = vr.status;
-        break;
-      }
-
-      case 'execute_sql':
-      case 'execute_system_action': {
-        const er: ExecutionResult = {
-          actionId: String(output.actionId ?? ''),
-          success: Boolean(output.success),
-          data: output.rows ?? output.result ?? output,
-          error: output.error as string | undefined,
-          durationMs: Number(output.durationMs ?? 0),
-        };
-        state.executionResults.push(er);
-        if (state.pendingAction) {
-          state.pendingAction.executionState = er.success ? 'success' : 'error';
-          state.actionHistory.push({ ...state.pendingAction });
-          state.pendingAction = null;
-        }
-        break;
-      }
-
-      case 'inspect_result':
-        state.resultInspection = {
-          complete: Boolean(output.complete),
-          quality: output.quality as 'sufficient' | 'partial' | 'failed',
-          summary: String(output.summary ?? ''),
-          dataShape: output.dataShape as Record<string, unknown> | undefined,
-        };
-        break;
-
-      case 'prepare_visualization_data':
-        state.visualizationDecision = {
-          suitable: Boolean(output.suitable),
-          componentType: output.componentType as AgentState['visualizationDecision'] extends { componentType?: infer C } ? C : never,
-        };
-        if (output.suitable) {
-          state.visualizationPayload = {
-            componentType: output.componentType as NonNullable<AgentState['visualizationPayload']>['componentType'],
-            props: (output.props as Record<string, unknown>) ?? {},
-          };
-        }
-        break;
-
-      case 'render_visualization': {
-        const ds = output.dataSpec as DataSpecPayload;
-        if (ds) {
-          state.visualizationPayload = {
-            componentType: ds.componentType,
-            props: ds.props,
-            patch: ds.patch as unknown[],
-          };
-        }
-        break;
-      }
-
-      case 'human_review_gate':
-        state.riskState = {
-          level: output.riskLevel as 'medium' | 'high',
-          reason: String(output.reason ?? ''),
-        };
-        state.reviewState = {
-          needed: true,
-          reason: String(output.reason ?? ''),
-          pendingActionId: output.actionId as string | undefined,
-        };
-        state.terminalStatus = 'review_needed';
-        break;
-
-      case 'compose_final_response':
-        state.finalResponseDraft = String(output.responseText ?? '');
-        state.terminalStatus = 'complete';
-        break;
-    }
-  }
-
-  // ── visualization emission ──────────────────────────────────────────────────
-
-  private maybeEmitDataSpec(
-    toolName: string,
-    output: Record<string, unknown>,
-    writer: { write: (part: unknown) => void },
-  ): void {
-    let dataSpec: DataSpecPayload | null = null;
-
-    if (toolName === 'render_visualization') {
-      dataSpec = output.dataSpec as DataSpecPayload;
-    } else if (
-      toolName === 'execute_sql' ||
-      toolName === 'execute_system_action' ||
-      toolName === 'answer_from_context'
-    ) {
-      const sanitized = this.toolRegistry.sanitize(output);
-      const discovery = this.uiDiscovery.inspect({
-        toolName,
-        toolCallId: '',
-        output: sanitized,
-        sanitized: true,
-        durationMs: 0,
-      });
-      if (discovery) dataSpec = this.uiDiscovery.buildDataSpec(discovery);
-    }
-
-    if (dataSpec) {
-      writer.write({
-        type: 'data-spec',
-        data: { componentType: dataSpec.componentType, props: dataSpec.props },
-      });
-    }
+    pipeUIMessageStreamToResponse({ response: res, stream: uiStream });
   }
 }

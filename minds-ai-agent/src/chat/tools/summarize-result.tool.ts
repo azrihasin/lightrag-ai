@@ -1,19 +1,12 @@
 import { Injectable } from '@nestjs/common';
-import { tool } from 'ai';
+import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
 
 @Injectable()
 export class SummarizeResultTool {
   asTool() {
-    return tool({
-      description:
-        'Summarize execution results in natural language when visualization is not suitable or preferred.',
-      inputSchema: z.object({
-        result: z.unknown(),
-        intent: z.string(),
-        maxLength: z.number().int().min(50).max(2000).optional().default(600),
-      }),
-      execute: async ({ result, intent, maxLength }) => {
+    return tool(
+      async ({ result, intent, maxLength }) => {
         const r = result as Record<string, unknown>;
         const limit = maxLength ?? 600;
         let summary: string;
@@ -38,6 +31,16 @@ export class SummarizeResultTool {
 
         return { summary: summary.slice(0, limit), intent };
       },
-    });
+      {
+        name: 'summarize_result',
+        description:
+          'Summarize execution results in natural language when visualization is not suitable or preferred.',
+        schema: z.object({
+          result: z.unknown(),
+          intent: z.string(),
+          maxLength: z.number().int().min(50).max(2000).optional().default(600),
+        }),
+      },
+    );
   }
 }
