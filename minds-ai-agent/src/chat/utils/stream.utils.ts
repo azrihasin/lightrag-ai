@@ -70,7 +70,7 @@ export function summarizeNodeOutput(nodeName: string, output: Partial<AgentState
       return { rowCount: er?.rowCount, columns: er?.columns, durationMs: er?.durationMs, success: er?.success };
     }
     case 'decideVisualizationResult': return { suitable: output.suitableForVisualization, component: output.visualizationComponentType, jmespathQuery: output.visualizationJmespathQuery };
-    case 'renderVisualization':       return { rendered: vizPayload !== undefined, componentType: vizPayload?.componentType };
+    case 'renderVisualization':       return { rendered: vizPayload !== undefined, dataSpec: vizPayload ?? null };
     case 'composeFinalResponse':      return { responseLength: output.finalResponse?.length ?? 0 };
     default:                          return output;
   }

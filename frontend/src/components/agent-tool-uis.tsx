@@ -72,9 +72,10 @@ type AgentToolGroupProps = {
   status: StatusType;
   toolCallId?: string;
   children?: ReactNode;
+  hideStreamingText?: boolean;
 };
 
-function AgentToolGroup({ label, toolCallId, children }: AgentToolGroupProps) {
+function AgentToolGroup({ label, toolCallId, children, hideStreamingText }: AgentToolGroupProps) {
   return (
     <TimelineItem step={1}>
       <TimelineHeader>
@@ -84,7 +85,7 @@ function AgentToolGroup({ label, toolCallId, children }: AgentToolGroupProps) {
       <TimelineSeparator />
       <TimelineContent>
         {children}
-        <NodeStreamingText toolCallId={toolCallId} />
+        {!hideStreamingText && <NodeStreamingText toolCallId={toolCallId} />}
       </TimelineContent>
     </TimelineItem>
   );
@@ -103,14 +104,34 @@ type LightRagDocument = {
 function RetrieveContextStream({
   status,
   result,
+  toolCallId,
 }: {
   status: StatusType;
   result: string | undefined;
+  toolCallId?: string;
 }) {
   const isRunning = status?.type === "running";
-  const out = parseJson(result);
+  const streamingText = useToolOutputStreamStore(
+    (s) => (toolCallId ? (s.partials[toolCallId] ?? "") : ""),
+  );
 
-  if (isRunning || !result) return null;
+  if (isRunning) {
+    if (!streamingText) return null;
+    return (
+      <div className="mt-2 overflow-hidden rounded-md border border-border bg-muted/40">
+        <div className="border-b border-border px-3 py-1.5 flex items-center gap-2">
+          <span className="text-xs font-medium text-muted-foreground">Retrieving Context</span>
+          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-blue-400" />
+        </div>
+        <pre className="overflow-x-auto p-3 text-xs leading-relaxed text-foreground whitespace-pre-wrap">
+          <code>{streamingText}</code>
+        </pre>
+      </div>
+    );
+  }
+
+  if (!result) return null;
+  const out = parseJson(result);
 
   const documents = Array.isArray(out.documents)
     ? (out.documents as LightRagDocument[])
@@ -173,8 +194,8 @@ StrategyDecisionUI.displayName = "StrategyDecisionUI";
 
 export const RetrieveContextUI: ToolCallMessagePartComponent = memo(
   ({ result, status, toolCallId }) => (
-    <AgentToolGroup label="Retrieve Context" status={status} toolCallId={toolCallId}>
-      <RetrieveContextStream status={status} result={result} />
+    <AgentToolGroup label="Retrieve Context" status={status} toolCallId={toolCallId} hideStreamingText>
+      <RetrieveContextStream status={status} result={result} toolCallId={toolCallId} />
     </AgentToolGroup>
   ),
 );

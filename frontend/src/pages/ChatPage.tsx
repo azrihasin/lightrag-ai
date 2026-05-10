@@ -109,12 +109,11 @@ const ChatAssistantMessage: FC = () => {
           return acc;
         }
         if (part.type === "data" && part.name === "spec") {
-          acc.push({ type: "data-spec", data: part.data });
-        } else {
-          const p = part as { type?: string; data?: unknown };
-          if (p.type === "data-spec" && p.data) {
-            acc.push({ type: "data-spec", data: p.data });
-          }
+          const raw = part.data as { componentType: string; props: Record<string, unknown> };
+          acc.push({
+            type: "data-spec",
+            data: { type: "nested", spec: { type: raw.componentType, props: raw.props } },
+          });
         }
         return acc;
       }, []),

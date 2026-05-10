@@ -3,7 +3,7 @@ import { InjectPinoLogger, PinoLogger } from 'nestjs-pino';
 import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
 
-const LIGHTRAG_API_URL = process.env.LIGHTRAG_API_URL ?? 'http://localhost:5174';
+const LIGHTRAG_API_URL = process.env.LIGHTRAG_API_URL ?? 'http://localhost:9621';
 
 @Injectable()
 export class RetrieveContextTool {

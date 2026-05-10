@@ -13,6 +13,16 @@ export function emit(config: AgentConfig | undefined, event: NodeCustomEvent | S
   config?.writer?.(event);
 }
 
+const MINDS_CONTEXT =
+  'You are an AI assistant for the MINDS Geo-Pro platform, a Mobile Intelligent Network Diagnostic System ' +
+  'for Telekom Malaysia. The platform helps users explore mobile network, customer experience, subscriber profiling, ' +
+  'and geospatial performance data through natural language. Data domains include Network CEM, RAN dashboard, ' +
+  'NOC dashboard, internal ticketing, visitor dashboard, pin-drop advisory, cluster performance, proactive trouble ' +
+  'ticketing, predictive cell status, subscriber mobility, next-best-action diagnostics, and subscriber profiling. ' +
+  'Analysis spans regions, clusters, bins, sites, cells, IMSI, MSISDN, network technologies, tickets, KPIs, coverage, ' +
+  'congestion, RF quality, TWAMP latency, usage, speed test, VoLTE, and 4G/5G/MOCN performance. ' +
+  'Primary users are THD, CX, NTEM, DTEM, OPTI, NOC, and planning teams.';
+
 export function buildNodes(toolMap: ToolMap, logger: PinoLogger, modelProvider: ModelProvider) {
 
   async function analyzeUserIntent(state: AgentState, config: AgentConfig): Promise<Partial<AgentState>> {
@@ -22,6 +32,7 @@ export function buildNodes(toolMap: ToolMap, logger: PinoLogger, modelProvider: 
     const intentModel = modelProvider.getChatModel(['analyzeUserIntent']);
     const userIntent = await streamText(intentModel, [
       new SystemMessage(
+        MINDS_CONTEXT + '\n\n' +
         'You are an intent-analysis assistant. Given the user\'s message, write exactly 2 to 3 sentences. ' +
         'First, summarize what the user wants. Then, state what you will do to fulfill the request. ' +
         'Be concise and specific. Reply with plain text only — no JSON, no markdown, no bullet points.',
@@ -75,17 +86,111 @@ export function buildNodes(toolMap: ToolMap, logger: PinoLogger, modelProvider: 
 
   async function retrieveContext(state: AgentState, config: AgentConfig): Promise<Partial<AgentState>> {
     emit(config, { type: 'node:start', node: 'retrieveContext' });
-    const tools = [toolMap['retrieve_context']];
+    const LIGHTRAG_URL = process.env.LIGHTRAG_API_URL ?? 'http://localhost:9621';
     const userIntent = state.userIntent ?? state.messages.at(-1)?.content ?? '';
     const query =
-      `You are helping a text-to-SQL agent construct a SQL query. ` +
+      MINDS_CONTEXT + ' ' +
+      `You are helping a text-to-SQL agent construct a SQL query for this platform. ` +
       `Retrieve only the database schema information (table names, column names, data types, relationships, and constraints) ` +
       `that is relevant to fulfilling this user request: "${userIntent}". ` +
-      `Do not answer the user request directly. Only return schema definitions needed to write the SQL query.`;
-    const result = await callTool<{ documents: unknown[]; query: string; sufficient: boolean; contextSummary?: string }>(
-      tools[0], { query, mode: 'mix', topK: 10 },
-    );
-    return { retrievedContext: result, enoughContext: result.sufficient };
+      `Return ONLY raw schema definitions. Do not answer the user request. Do not include any summary, explanation, or prose — schema definitions only.`;
+
+    try {
+      const res = await fetch(`${LIGHTRAG_URL}/query/stream`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query, mode: 'mix', stream: true, include_references: true, top_k: 10 }),
+      });
+
+      if (!res.ok || !res.body) {
+        const errText = await res.text().catch(() => '');
+        logger.warn({ query, status: res.status, errText }, 'LightRAG /query/stream non-OK');
+        return {
+          retrievedContext: { documents: [], query, sufficient: false, contextSummary: `LightRAG returned HTTP ${res.status}.` },
+          enoughContext: false,
+        };
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let references: Array<{ reference_id: string; file_path: string; content?: string[] }> = [];
+      const responseChunks: string[] = [];
+      let streamError: string | undefined;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+          try {
+            const obj = JSON.parse(trimmed) as {
+              references?: Array<{ reference_id: string; file_path: string; content?: string[] }>;
+              response?: string;
+              error?: string;
+            };
+            if (obj.references) {
+              references = obj.references;
+            } else if (typeof obj.response === 'string') {
+              responseChunks.push(obj.response);
+              emit(config, { type: 'node:progress', node: 'retrieveContext', step: 'token', data: obj.response });
+            } else if (typeof obj.error === 'string') {
+              streamError = obj.error;
+              logger.warn({ query, streamError }, 'LightRAG stream error object');
+            }
+          } catch {
+            logger.debug({ trimmed }, 'LightRAG stream: skipping non-JSON line');
+          }
+        }
+      }
+
+      if (buffer.trim()) {
+        try {
+          const obj = JSON.parse(buffer.trim()) as { references?: unknown; response?: string; error?: string };
+          if (typeof obj.response === 'string') {
+            responseChunks.push(obj.response);
+            emit(config, { type: 'node:progress', node: 'retrieveContext', step: 'token', data: obj.response });
+          }
+        } catch { /* skip incomplete buffer */ }
+      }
+
+      const fullResponse = responseChunks.join('').trim();
+
+      if (streamError && !fullResponse) {
+        return {
+          retrievedContext: { documents: [], query, sufficient: false, contextSummary: `LightRAG error: ${streamError}` },
+          enoughContext: false,
+        };
+      }
+
+      const documents: Array<{ id: string; title: string; content: string; score: number; source: string }> = [];
+      if (fullResponse) {
+        documents.push({ id: 'lightrag-answer', title: 'LightRAG Knowledge Base Answer', content: fullResponse, score: 1.0, source: 'lightrag/mix/stream' });
+      }
+      references.forEach((ref) => {
+        documents.push({ id: `ref-${ref.reference_id}`, title: `Reference ${ref.reference_id}`, content: ref.content?.join('\n') ?? ref.file_path, score: 0.9, source: ref.file_path });
+      });
+
+      const sufficient = fullResponse.length > 100;
+      logger.info({ query, answerLength: fullResponse.length, referenceCount: references.length, sufficient }, 'LightRAG /query/stream succeeded');
+
+      return {
+        retrievedContext: { documents, query, sufficient, contextSummary: sufficient ? `Retrieved answer (${fullResponse.length} chars) with ${references.length} reference(s).` : 'LightRAG returned no results.' },
+        enoughContext: sufficient,
+      };
+    } catch (err) {
+      logger.error({ query, err }, 'LightRAG /query/stream request failed');
+      return {
+        retrievedContext: { documents: [], query, sufficient: false, contextSummary: 'LightRAG request failed.' },
+        enoughContext: false,
+      };
+    }
   }
 
   async function answerFromLightRAG(state: AgentState, config: AgentConfig): Promise<Partial<AgentState>> {
@@ -458,9 +563,9 @@ export function buildNodes(toolMap: ToolMap, logger: PinoLogger, modelProvider: 
     const composeModel = modelProvider.getChatModel(['composeFinalResponse']);
     const finalResponse = await streamText(composeModel, [
       new SystemMessage(
-        'You are an assistant for a text-to-SQL application. The user asks questions in plain language and you query a database on their behalf to find the answer. ' +
+        MINDS_CONTEXT + '\n\n' +
         'Write a concise, conversational response that directly answers the user\'s question based on what the data revealed. ' +
-        'Focus on the outcome and insights from the data — what the results mean for the user. ' +
+        'Focus on operational insights — root-cause indicators, affected areas, trends, rankings, and recommended next actions relevant to the user\'s team. ' +
         'Do NOT mention SQL, queries, tables, columns, or technical database details. ' +
         'Do NOT explain how the query was built. Do NOT repeat the question back verbatim. ' +
         'Always end with a note that the full result table is shown below.',
