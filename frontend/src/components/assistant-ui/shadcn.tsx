@@ -444,7 +444,15 @@ const AssistantMessage: FC = () => {
         if (specData.componentType === "sql-result-table") {
           sqlTables.push(specData.props as SqlTableProps);
         } else {
-          jsonRenderParts.push({ type: "data-spec", data: specData });
+          const component = specData.componentType as string;
+          const props = (specData.props ?? {}) as Record<string, unknown>;
+          jsonRenderParts.push({
+            type: "data-spec",
+            data: {
+              type: "nested",
+              spec: { type: "component", component, props },
+            },
+          });
         }
       }
     }

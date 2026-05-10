@@ -51,7 +51,8 @@ export type UiComponentType =
   | 'weather-card'
   | 'metric-card'
   | 'list'
-  | 'json-tree';
+  | 'json-tree'
+  | 'geo_map';
 
 export interface JsonPatchOperation {
   op: 'add' | 'remove' | 'replace' | 'move' | 'copy' | 'test';

@@ -4,6 +4,7 @@ import { defineRegistry } from "@json-render/react";
 import { catalog } from "./catalog";
 import { chartConfigForPie, chartConfigFromSeries } from "./chart-registry-helpers";
 import { useState } from "react";
+import { GeoMapRenderer } from "@/components/geo-map-renderer";
 import { TrendingUp } from "lucide-react";
 import { AlertDialog as AlertDialogPrimitive } from "radix-ui";
 import {
@@ -2621,6 +2622,8 @@ export const { registry } = defineRegistry(catalog, {
         </Card>
       );
     },
+
+    GeoMap: ({ props }: any) => <GeoMapRenderer props={props} />,
   },
   actions: {
     submit: async (params) => {

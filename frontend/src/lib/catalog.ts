@@ -4,6 +4,78 @@ import { z } from "zod";
 
 const rowRecord = z.record(z.string(), z.union([z.string(), z.number()]));
 
+// ─── Geo / Map schemas ─────────────────────────────────────────────────────────
+
+const latLng = z.tuple([z.number(), z.number()]);
+
+const markerConfig = z.object({
+  position: latLng,
+  label: z.string().optional().nullable(),
+  popup: z.string().optional().nullable(),
+  tooltip: z.string().optional().nullable(),
+  tooltipSide: z.enum(["top", "right", "bottom", "left"]).optional().nullable(),
+});
+
+const shapeConfig = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("circle"), center: latLng, radius: z.number(), popup: z.string().optional().nullable(), tooltip: z.string().optional().nullable() }),
+  z.object({ type: z.literal("circleMarker"), center: latLng, radius: z.number().optional().nullable(), popup: z.string().optional().nullable(), tooltip: z.string().optional().nullable() }),
+  z.object({ type: z.literal("polyline"), positions: z.array(latLng).min(2), popup: z.string().optional().nullable(), tooltip: z.string().optional().nullable() }),
+  z.object({ type: z.literal("polygon"), positions: z.array(latLng).min(3), popup: z.string().optional().nullable(), tooltip: z.string().optional().nullable() }),
+  z.object({ type: z.literal("rectangle"), bounds: z.tuple([latLng, latLng]), popup: z.string().optional().nullable(), tooltip: z.string().optional().nullable() }),
+]);
+
+const tileLayerConfig = z.object({
+  name: z.string().optional().nullable(),
+  url: z.string().optional().nullable(),
+  darkUrl: z.string().optional().nullable(),
+  attribution: z.string().optional().nullable(),
+  darkAttribution: z.string().optional().nullable(),
+});
+
+const layerGroupConfig = z.object({
+  name: z.string(),
+  defaultActive: z.boolean().optional().nullable(),
+  markers: z.array(markerConfig).optional().nullable(),
+  shapes: z.array(shapeConfig).optional().nullable(),
+});
+
+const drawConfig = z.object({
+  marker: z.boolean().optional().nullable(),
+  polyline: z.boolean().optional().nullable(),
+  polygon: z.boolean().optional().nullable(),
+  circle: z.boolean().optional().nullable(),
+  rectangle: z.boolean().optional().nullable(),
+  edit: z.boolean().optional().nullable(),
+  delete: z.boolean().optional().nullable(),
+  undo: z.boolean().optional().nullable(),
+});
+
+const geoMap = z.object({
+  title: z.string().optional().nullable(),
+  description: z.string().optional().nullable(),
+  center: latLng,
+  zoom: z.number().optional().nullable(),
+  data: z.array(z.record(z.string(), z.union([z.string(), z.number(), z.null()]))).optional().nullable(),
+  latField: z.string().optional().nullable(),
+  lngField: z.string().optional().nullable(),
+  labelField: z.string().optional().nullable(),
+  popupFields: z.array(z.string()).optional().nullable(),
+  markers: z.array(markerConfig).optional().nullable(),
+  cluster: z.boolean().optional().nullable(),
+  shapes: z.array(shapeConfig).optional().nullable(),
+  tileLayers: z.array(tileLayerConfig).optional().nullable(),
+  layers: z.array(layerGroupConfig).optional().nullable(),
+  controls: z.object({
+    zoom: z.boolean().optional().nullable(),
+    fullscreen: z.boolean().optional().nullable(),
+    locate: z.boolean().optional().nullable(),
+    search: z.boolean().optional().nullable(),
+    layers: z.boolean().optional().nullable(),
+    draw: z.union([z.boolean(), drawConfig]).optional().nullable(),
+  }).optional().nullable(),
+  draw: drawConfig.optional().nullable(),
+});
+
 /** Explicit axis fields: data rows, category field xKey, numeric series field names. */
 const chartLineBar = z.object({
   title: z.string(),
@@ -422,6 +494,19 @@ export const catalog = defineCatalog(schema, {
       props: chartXY,
       description:
         "Bar chart with the tooltip header label hidden (hideLabel). Use for minimal tooltips that omit the category/x-axis label.",
+    },
+
+    GeoMap: {
+      props: geoMap,
+      description:
+        "Interactive Leaflet map rendered from SQL results. " +
+        "Required: center [lat, lng]. " +
+        "Data-driven markers: set data (SQL rows), latField + lngField (coordinate column names), labelField (popup heading column), popupFields (columns to show in popup). " +
+        "Explicit features: markers (static points), cluster (boolean — group nearby markers), shapes (circle/circleMarker/polyline/polygon/rectangle). " +
+        "Tile layers: tileLayers array with name/url/darkUrl for light+dark theme support. " +
+        "Layer groups: layers array of named toggleable groups each with their own markers/shapes and defaultActive flag. " +
+        "Controls: controls.zoom/fullscreen/locate/search/layers/draw (boolean toggles), draw (DrawConfig with marker/polyline/polygon/circle/rectangle/edit/delete/undo). " +
+        "Use for: site locations, customer density heatmaps, route polylines, coverage polygons, service areas, network tower clusters.",
     },
   },
   actions: {

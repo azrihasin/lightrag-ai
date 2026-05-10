@@ -425,7 +425,7 @@ export function buildNodes(toolMap: ToolMap, logger: PinoLogger, modelProvider: 
         CATALOG_SPEC + '\n\n' + SELECTION_RULES + '\n\n' + JMESPATH_FORMAT,
       ),
       new HumanMessage(
-        `Execution result: ${JSON.stringify({ columns: execResult?.columns, rowCount: execResult?.rowCount, sampleRows: sqlRows.slice(0, 5) })}\n` +
+        `Execution result: ${JSON.stringify({ columns: execResult?.columns, rowCount: execResult?.rowCount, rows: sqlRows.slice(0, 5) })}\n` +
         `Data shape: ${JSON.stringify(state.inspectionDataShape)}\n` +
         `User intent: ${state.userIntent ?? ''}`,
       ),
@@ -458,6 +458,69 @@ export function buildNodes(toolMap: ToolMap, logger: PinoLogger, modelProvider: 
     }
   }
 
+  const visualizationPrompt =
+    'You are a data visualization expert using the json-render catalog.\n' +
+    'Given a SQL query and its execution result, decide whether the result is suitable for visualization.\n' +
+    'If suitable, select the best visualization component and generate a JMESPath query to extract the data required by that component.\n\n' +
+
+    'Your job is to choose the most appropriate visualization based on:\n' +
+    '1. The user\'s original question\n' +
+    '2. The SQL result schema\n' +
+    '3. Sample rows\n' +
+    '4. Data semantics\n' +
+    '5. Visualization best practices\n' +
+    '6. The available components in the json-render catalog\n\n' +
+
+    'You must not choose a chart only because numeric columns exist.\n' +
+    'You must classify each column semantically before choosing a visualization.\n\n' +
+
+    'Column semantic types:\n' +
+    '- dimension: names, labels, categories, regions, site names\n' +
+    '- measure: numeric values intended for comparison or aggregation\n' +
+    '- time: date, timestamp, month, year\n' +
+    '- geo_coordinate: latitude, longitude, lat, lon, lng\n' +
+    '- geo_area: state, district, city, country, postcode\n' +
+    '- identifier: id, code, uuid, reference number\n' +
+    '- text: long free-text fields\n\n' +
+
+    'Visualization rules:\n' +
+    '1. If the user explicitly requests a chart type, use it only if it is compatible with the data.\n' +
+    '2. If latitude and longitude are present, choose a map or point map component from the catalog.\n' +
+    '3. If the user asks for a list, details, records, or coordinates, prefer a table-like component. If latitude and longitude are present, prefer a map-like component with useful labels/tooltips.\n' +
+    '4. Use bar charts only for comparing a real measure across categories.\n' +
+    '5. Use line charts only for numeric measures over time.\n' +
+    '6. Use scatter plots only for relationships between two real numeric measures.\n' +
+    '7. Use pie/donut charts only for small part-to-whole categorical data.\n' +
+    '8. Use histogram only for distribution of one numeric measure.\n' +
+    '9. Never use latitude, longitude, id, postcode, phone number, or other identifiers as chart measures.\n' +
+    '10. If no suitable chart exists but the result is useful to display, choose a table-like component.\n' +
+    '11. If the result is empty, purely textual, too ambiguous, or not useful to visualize, set suitable to false.\n\n' +
+
+    'JMESPath rules:\n' +
+    '1. The JMESPath query must extract only the fields needed by the selected component.\n' +
+    '2. The JMESPath query must preserve the original column names unless the component requires specific property names.\n' +
+    '3. For map-like components, extract latitude, longitude, and a useful label or tooltip field when available.\n' +
+    '4. For chart components, extract the category/time field and the real measure field.\n' +
+    '5. Do not invent fields that are not present in the SQL result.\n\n' +
+
+    'Your response must match this JSON shape exactly when suitable is true:\n' +
+    '{\n' +
+    '  "suitable": true,\n' +
+    '  "component": "ComponentNameFromCatalog",\n' +
+    '  "jmespathQuery": "JMESPath expression",\n' +
+    '  "staticProps": {}\n' +
+    '}\n\n' +
+
+    'If the result is not suitable for visualization, return exactly:\n' +
+    '{\n' +
+    '  "suitable": false\n' +
+    '}\n\n' +
+
+    'Do not include extra keys outside this schema.\n' +
+    'Do not include markdown.\n' +
+    'Do not include explanation outside JSON.\n' +
+    'Return only valid JSON.';
+
   async function decideVisualizationResult(state: AgentState, config: AgentConfig): Promise<Partial<AgentState>> {
     emit(config, { type: 'node:start', node: 'decideVisualizationResult' });
 
@@ -466,17 +529,23 @@ export function buildNodes(toolMap: ToolMap, logger: PinoLogger, modelProvider: 
     const sql = state.generatedSql ?? '';
     const decideModel = modelProvider.getChatModel(['decideVisualizationResult']);
 
+    // Surface column names so the LLM can detect lat/lng columns for GeoMap decisions
+    const columnContext = execResult?.columns?.length
+      ? `Columns: ${execResult.columns.join(', ')}`
+      : '';
+
     try {
       // No config — don't stream the JSON decision tokens to the UI
       const rawResponse = await decideModel.invoke([
         new SystemMessage(
-          'You are a data visualization expert using the json-render catalog.\n' +
-          'Given a SQL query and its execution result, select the best chart component and generate a JMESPath query to extract the data.\n\n' +
-          CATALOG_SPEC + '\n\n' + SELECTION_RULES + '\n\n' + JMESPATH_FORMAT,
+          visualizationPrompt + '\n\n' + CATALOG_SPEC + '\n\n' +
+          'JMESPath evaluation context: the query is run against an object with fields { rows, columns, rowCount }. ' +
+          'For simple row extraction use "rows". For projections use "rows[*].{...}".',
         ),
         new HumanMessage(
           `SQL Query:\n${sql}\n\n` +
-          `Execution result: ${JSON.stringify({ columns: execResult?.columns, rowCount: execResult?.rowCount, sampleRows: sqlRows.slice(0, 5) })}\n` +
+          `${columnContext}\n` +
+          `Execution result: ${JSON.stringify({ columns: execResult?.columns, rowCount: execResult?.rowCount, rows: sqlRows.slice(0, 5) })}\n` +
           `User intent: ${state.userIntent ?? ''}`,
         ),
       ]);
@@ -498,10 +567,14 @@ export function buildNodes(toolMap: ToolMap, logger: PinoLogger, modelProvider: 
 
       // Stream summary with config so tokens flow via LangGraph messages mode → tool-output-delta
       const summaryModel = modelProvider.getChatModel(['decideVisualizationResult']);
+      const isMap = parsed.component === 'GeoMap';
       for await (const _chunk of await summaryModel.stream([
         new SystemMessage(
           'You are a data assistant. In 2 sentences, explain the visualization decision. ' +
-          'Mention the chart component chosen and why it fits the data. No markdown, no code blocks.',
+          (isMap
+            ? 'Mention that an interactive map was chosen and which coordinate columns are being used. '
+            : 'Mention the chart component chosen and why it fits the data. ') +
+          'No markdown, no code blocks.',
         ),
         new HumanMessage(
           `SQL: ${sql}\nChosen component: ${parsed.component}\nJMESPath query: ${parsed.jmespathQuery}\nUser intent: ${state.userIntent ?? ''}`,
@@ -512,6 +585,8 @@ export function buildNodes(toolMap: ToolMap, logger: PinoLogger, modelProvider: 
 
       const jmespathSource = { rows: sqlRows, columns: execResult?.columns ?? [], rowCount: execResult?.rowCount ?? 0 };
       const data = jmespath.search(jmespathSource, parsed.jmespathQuery);
+
+      // For GeoMap the `data` field holds the SQL rows; staticProps holds all geo config
       const props = { ...(parsed.staticProps ?? {}), data };
 
       return {

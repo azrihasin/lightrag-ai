@@ -2,13 +2,16 @@ import { useEffect, useState } from "react"
 import "./App.css"
 import ChatPage from "./pages/ChatPage"
 import AllChartsPage from "./pages/AllChartsPage"
+import MapDemoPage from "./pages/MapDemoPage"
 import { TooltipProvider } from "./components/ui/tooltip"
+import { ThemeProvider } from "next-themes"
 
-type Tab = "chat" | "all-charts"
+type Tab = "chat" | "all-charts" | "map"
 
 const tabs: Array<{ id: Tab; label: string }> = [
   { id: "chat", label: "Chat" },
   { id: "all-charts", label: "All Charts" },
+  { id: "map", label: "Map" },
 ]
 
 function isTab(value: string): value is Tab {
@@ -47,6 +50,7 @@ function App() {
   }
 
   return (
+    <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
     <TooltipProvider>
       <div className="fixed inset-0 w-screen h-screen bg-background flex flex-col">
         <nav className="flex border-b border-border px-4 gap-1 shrink-0">
@@ -68,9 +72,11 @@ function App() {
         <div className="flex-1 min-h-0">
           {tab === "chat" && <ChatPage />}
           {tab === "all-charts" && <AllChartsPage />}
+          {tab === "map" && <MapDemoPage />}
         </div>
       </div>
     </TooltipProvider>
+    </ThemeProvider>
   )
 }
 

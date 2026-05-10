@@ -61,7 +61,7 @@ export function summarizeNodeOutput(nodeName: string, output: Partial<AgentState
     case 'analyzeUserIntent':         return { userIntent: output.userIntent };
     case 'retrieveContext': {
       const docs = output.retrievedContext?.documents ?? [];
-      return { sufficient: output.retrievedContext?.sufficient, documentCount: docs.length, summary: output.retrievedContext?.contextSummary };
+      return { documents: docs, sufficient: output.retrievedContext?.sufficient, documentCount: docs.length, summary: output.retrievedContext?.contextSummary };
     }
     case 'generateSqlOrToolCall':     return { sql: output.generatedSql, dialect: output.sqlDialect };
     case 'validateSqlAction':         return { status: output.validationStatus, reason: output.validationReason };

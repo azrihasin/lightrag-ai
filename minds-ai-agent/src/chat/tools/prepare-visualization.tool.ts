@@ -3,6 +3,16 @@ import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
 import type { UiComponentType } from '../dto/sse-event.dto';
 
+/** Column name patterns that indicate geographic coordinate data. */
+const LAT_PATTERNS = /^(lat(itude)?|lat_decimal|y_coord)$/i;
+const LNG_PATTERNS = /^(lng|lon(gitude)?|long_decimal|x_coord)$/i;
+
+function detectGeoColumns(columns: string[]): { latField?: string; lngField?: string } {
+  const latField = columns.find((c) => LAT_PATTERNS.test(c));
+  const lngField = columns.find((c) => LNG_PATTERNS.test(c));
+  return { latField, lngField };
+}
+
 @Injectable()
 export class PrepareVisualizationTool {
   asTool() {
@@ -14,9 +24,19 @@ export class PrepareVisualizationTool {
         const numericCols = dataShape?.numericCols ?? [];
 
         if (rows && rows.length > 0) {
+          // Detect geographic data first — takes priority over chart/table
+          const { latField, lngField } = columns ? detectGeoColumns(columns) : {};
+          const isGeo = Boolean(latField && lngField);
+
           const type: UiComponentType =
             (preferredType as UiComponentType) ??
-            (numericCols.length >= 1 && rows.length > 3 ? 'chart' : 'table');
+            (isGeo ? 'geo_map' : numericCols.length >= 1 && rows.length > 3 ? 'chart' : 'table');
+
+          const geoHints =
+            type === 'geo_map' && latField && lngField
+              ? { latField, lngField, cluster: rows.length > 20 }
+              : {};
+
           return {
             suitable: true,
             componentType: type,
@@ -24,6 +44,7 @@ export class PrepareVisualizationTool {
               rows,
               columns,
               rowCount: rows.length,
+              ...geoHints,
               ...(type === 'chart'
                 ? {
                     chartType: rows.length <= 12 ? 'bar' : 'line',
@@ -63,6 +84,7 @@ export class PrepareVisualizationTool {
         name: 'prepare_visualization_data',
         description:
           'Determine whether visualization is suitable and prepare structured data for rendering. ' +
+          'Detects geographic coordinate columns (lat/lng) and suggests geo_map automatically. ' +
           'Call after inspect_result when result has tabular or numeric data.',
         schema: z.object({
           result: z.unknown(),
@@ -75,7 +97,7 @@ export class PrepareVisualizationTool {
             })
             .optional(),
           preferredType: z
-            .enum(['table', 'chart', 'list', 'metric-card', 'json-tree'])
+            .enum(['table', 'chart', 'list', 'metric-card', 'json-tree', 'geo_map'])
             .optional(),
         }),
       },
