@@ -70,9 +70,15 @@ export const JMESPATH_FORMAT =
   'For simple row extraction use "rows". For projections: "rows[*].{label: name, value: total}".\n' +
   'The query result becomes the `data` prop — do NOT include `data` in staticProps.\n\n' +
   'For chart components staticProps must include: title, xKey|nameKey|angleKey, series|valueKey, optionally description/footerLabel.\n\n' +
-  'For GeoMap staticProps must include center [lat,lng] and optionally: zoom, latField, lngField, labelField, popupFields, cluster, controls.\n' +
+  'For GeoMap, the JMESPath projection MUST output exactly these field names regardless of the source column names:\n' +
+  '  - "latitude" (not lat, lat_decimal, y_coord, or any other name)\n' +
+  '  - "longitude" (not lng, lon, long_decimal, x_coord, or any other name)\n' +
+  '  - "label" for the marker label\n' +
+  'Example: if source columns are "lat_decimal", "lng_decimal", "site_name", use:\n' +
+  '  "rows[*].{latitude: lat_decimal, longitude: lng_decimal, label: site_name}"\n' +
+  'Always set staticProps latField="latitude" and lngField="longitude" to match.\n\n' +
   'GeoMap staticProps example:\n' +
   '  { "title": "Site Locations", "center": [3.139, 101.687], "zoom": 11,\n' +
   '    "latField": "latitude", "lngField": "longitude",\n' +
-  '    "labelField": "site_name", "popupFields": ["site_name", "status", "city"],\n' +
+  '    "labelField": "label", "popupFields": ["label", "status", "city"],\n' +
   '    "cluster": true, "controls": { "zoom": true, "fullscreen": true } }';

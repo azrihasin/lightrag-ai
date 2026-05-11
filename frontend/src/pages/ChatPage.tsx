@@ -13,13 +13,8 @@ import {
   VisibilityProvider,
   useJsonRenderMessage,
 } from "@json-render/react";
-import { MarkdownText } from "@/components/assistant-ui/markdown-text";
+import { StreamdownText } from "@/components/assistant-ui/streamdown-text";
 import { ToolFallback } from "@/components/assistant-ui/tool-fallback";
-import {
-  ReasoningRoot,
-  ReasoningTrigger,
-  ReasoningContent,
-} from "@/components/assistant-ui/reasoning";
 import { getAgentForTool } from "@/lib/tool-agent-map";
 import type { ToolCallMessagePartComponent } from "@assistant-ui/react";
 import {
@@ -96,9 +91,6 @@ const NoOp = () => null;
 
 const ChatAssistantMessage: FC = () => {
   const parts = useAuiState((s) => s.message.parts);
-  const messageStatus = useAuiState((s) => s.message.status);
-  const isRunning = (messageStatus as { type?: string } | undefined)?.type === "running";
-
   const hasToolParts = parts.some((p) => p.type === "tool-call");
 
   const jsonRenderParts = useMemo(
@@ -128,24 +120,19 @@ const ChatAssistantMessage: FC = () => {
     >
       <div className="aui-assistant-message-content wrap-break-word px-2 text-foreground leading-relaxed">
         {hasToolParts && (
-          <ReasoningRoot variant="ghost" defaultOpen>
-            <ReasoningTrigger active={isRunning} />
-            <ReasoningContent>
-              <AgentToolTimeline>
-                <MessagePrimitive.Parts
-                  components={{
-                    Text: NoOp,
-                    tools: { by_name: toolsByName, Fallback: ToolFallbackWithAgent },
-                  }}
-                />
-              </AgentToolTimeline>
-            </ReasoningContent>
-          </ReasoningRoot>
+          <AgentToolTimeline>
+            <MessagePrimitive.Parts
+              components={{
+                Text: NoOp,
+                tools: { by_name: toolsByName, Fallback: ToolFallbackWithAgent },
+              }}
+            />
+          </AgentToolTimeline>
         )}
 
         <MessagePrimitive.Parts
           components={{
-            Text: MarkdownText,
+            Text: StreamdownText,
             tools: { Fallback: NoOp },
           }}
         />
