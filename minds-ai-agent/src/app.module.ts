@@ -4,6 +4,7 @@ import { LoggerModule } from 'nestjs-pino';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { ChatModule } from './chat/chat.module';
+import { ChatHistoryModule } from './chat-history/chat-history.module';
 import { DatabaseModule } from './database/database.module';
 
 @Module({
@@ -26,6 +27,7 @@ import { DatabaseModule } from './database/database.module';
         },
       },
     }),
+    ChatHistoryModule,
     ChatModule,
   ],
   controllers: [AppController],

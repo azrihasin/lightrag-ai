@@ -61,7 +61,10 @@ export const ChatRequestSchema = z.object({
   messages: z.array(MessageSchema).min(1),
   model: z.string().optional(),
   provider: z.enum(['openai', 'anthropic']).optional(),
+  // sessionId: explicit session ID (legacy / backward compat)
+  // id: AssistantUI thread ID sent by AssistantChatTransport (equals session ID)
   sessionId: z.string().optional(),
+  id: z.string().optional(),
   enableUiDiscovery: z.boolean().optional().default(true),
 }).passthrough();
 

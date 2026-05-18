@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ChatHistoryModule } from '../chat-history/chat-history.module';
 import { ChatController } from './chat.controller';
 import { ChatService } from './chat.service';
 import { ModelProvider } from './providers/model.provider';
@@ -21,6 +22,7 @@ import { SearchTool } from './tools/search.tool';
 import { CalculatorTool } from './tools/calculator.tool';
 
 @Module({
+  imports: [ChatHistoryModule],
   controllers: [ChatController],
   providers: [
     RetrieveContextTool,

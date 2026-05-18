@@ -1,8 +1,12 @@
-import { AssistantChatTransport, useChatRuntime } from "@assistant-ui/react-ai-sdk";
+import {
+  AssistantChatTransport,
+  useChatRuntime,
+} from "@assistant-ui/react-ai-sdk";
 import {
   AssistantRuntimeProvider,
   MessagePrimitive,
   useAuiState,
+  useRemoteThreadListRuntime,
 } from "@assistant-ui/react";
 import {
   ActionProvider,
@@ -53,6 +57,10 @@ import {
 } from "@/components/agent-tool-uis";
 import { registry } from "@/lib/registry";
 import { createStreamingFetch } from "@/lib/streaming-fetch";
+import {
+  ChatHistoryThreadListAdapter,
+  createBackendHistoryAdapter,
+} from "@/lib/chat-thread-adapter";
 import { useMemo, useRef, type FC } from "react";
 
 // ─── Fallback for unrecognised tools ─────────────────────────────────────────
@@ -67,7 +75,11 @@ const ToolFallbackWithAgent: ToolCallMessagePartComponent = (props) => (
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:3000/api/chat";
 
-// ─── Assistant message ────────────────────────────────────────────────────────
+// ─── Backend thread list adapter (singleton) ──────────────────────────────────
+
+const backendAdapter = new ChatHistoryThreadListAdapter();
+
+// ─── Tool registry ────────────────────────────────────────────────────────────
 
 const toolsByName = {
   analyze_user_intent:        AnalyzeIntentUI,
@@ -93,6 +105,8 @@ const toolsByName = {
 } as const;
 
 const NoOp = () => null;
+
+// ─── Assistant message ────────────────────────────────────────────────────────
 
 const ChatAssistantMessage: FC = () => {
   const parts = useAuiState((s) => s.message.parts);
@@ -162,12 +176,30 @@ const ChatAssistantMessage: FC = () => {
   );
 };
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
+// ─── Per-thread runtime hook ──────────────────────────────────────────────────
+// Called once per active thread. Reads the thread's externalId (backend session
+// ID) and creates a chat runtime with history loading for that session.
 
-export default function ChatPage() {
+function ChatRuntimeHook() {
   const fetchRef = useRef(createStreamingFetch());
-  const runtime = useChatRuntime({
+  const externalId = useAuiState((s) => s.threadListItem.externalId);
+  const historyAdapter = useMemo(
+    () => createBackendHistoryAdapter(externalId),
+    [externalId],
+  );
+
+  return useChatRuntime({
     transport: new AssistantChatTransport({ api: API_URL, fetch: fetchRef.current }),
+    adapters: { history: historyAdapter },
+  });
+}
+
+// ─── Chat area ────────────────────────────────────────────────────────────────
+
+const ChatArea: FC = () => {
+  const runtime = useRemoteThreadListRuntime({
+    runtimeHook: ChatRuntimeHook,
+    adapter: backendAdapter,
   });
 
   return (
@@ -191,5 +223,15 @@ export default function ChatPage() {
         </VisibilityProvider>
       </StateProvider>
     </AssistantRuntimeProvider>
+  );
+};
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
+export default function ChatPage() {
+  return (
+    <div className="flex h-full w-full">
+      <ChatArea />
+    </div>
   );
 }

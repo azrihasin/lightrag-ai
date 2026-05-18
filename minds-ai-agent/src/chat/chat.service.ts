@@ -20,6 +20,8 @@ import {
   extractNodeArgs,
   summarizeNodeOutput,
 } from './utils/stream.utils';
+import { ChatHistoryService } from '../chat-history/chat-history.service';
+import type { NewMessage } from '../chat-history/chat-history.types';
 
 @Injectable()
 export class ChatService implements OnModuleInit {
@@ -29,6 +31,7 @@ export class ChatService implements OnModuleInit {
     @InjectPinoLogger(ChatService.name) private readonly logger: PinoLogger,
     private readonly modelProvider: ModelProvider,
     private readonly toolRegistry: ToolRegistry,
+    private readonly chatHistoryService: ChatHistoryService,
   ) {}
 
   onModuleInit(): void {
@@ -56,6 +59,9 @@ export class ChatService implements OnModuleInit {
         const resolvedToolNames = new Map<string, string>();
 
         let currentState: AgentState = { ...initialState };
+
+        // Accumulate the full assistant response text for history persistence
+        let accumulatedText = '';
 
         const closeTextPart = (nodeName: string) => {
           const id = openTextParts.get(nodeName);
@@ -174,6 +180,7 @@ export class ChatService implements OnModuleInit {
                 }
                 const id = openTextParts.get(nodeName)!;
                 writer.write({ type: 'text-delta', id, delta: token });
+                accumulatedText += token;
               }
 
               if (STREAMING_NODES.has(nodeName) || TOOL_STREAMING_NODES.has(nodeName)) {
@@ -211,6 +218,9 @@ export class ChatService implements OnModuleInit {
           openTextParts.clear();
 
           this.logger.info({ threadId }, 'Chat stream completed');
+
+          // Persist history after successful stream completion
+          await this.persistTurn(dto, accumulatedText, threadId);
         } catch (err) {
           for (const [, id] of openTextParts) writer.write({ type: 'text-end', id });
           openTextParts.clear();
@@ -222,5 +232,55 @@ export class ChatService implements OnModuleInit {
     });
 
     pipeUIMessageStreamToResponse({ response: res, stream: uiStream });
+  }
+
+  private async persistTurn(dto: ChatRequestDto, assistantText: string, threadId: string): Promise<void> {
+    try {
+      const sessionId = await this.chatHistoryService.ensureSession(dto.sessionId ?? dto.id);
+
+      const newMessages: NewMessage[] = [];
+      let seqBase = 0;
+
+      // Save the last user message from this request (the new turn)
+      const lastUserMsg = [...dto.messages].reverse().find((m) => m.role === 'user');
+      if (lastUserMsg) {
+        const content = typeof lastUserMsg.content === 'string'
+          ? lastUserMsg.content
+          : JSON.stringify(lastUserMsg.content);
+
+        newMessages.push({
+          id: lastUserMsg.id,
+          sequence_index: seqBase++,
+          role: 'user',
+          message_type: 'text',
+          content,
+        });
+      }
+
+      // Save the assistant response if one was generated
+      if (assistantText.trim()) {
+        newMessages.push({
+          sequence_index: seqBase++,
+          role: 'assistant',
+          message_type: 'text',
+          content: assistantText.trim(),
+          metadata: { thread_id: threadId },
+          model_name: process.env.AI_MODEL,
+        });
+      }
+
+      if (newMessages.length === 0) return;
+
+      const autoTitle = lastUserMsg
+        ? (typeof lastUserMsg.content === 'string' ? lastUserMsg.content : '').slice(0, 80)
+        : undefined;
+
+      await this.chatHistoryService.appendTurn({ sessionId, messages: newMessages, autoTitle });
+
+      this.logger.info({ sessionId, threadId }, 'Chat history persisted');
+    } catch (err) {
+      // Non-fatal: log but don't break the response
+      this.logger.error({ err, threadId }, 'Failed to persist chat history');
+    }
   }
 }
