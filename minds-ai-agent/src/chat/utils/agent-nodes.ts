@@ -444,8 +444,28 @@ export function buildNodes(toolMap: ToolMap, logger: PinoLogger, modelProvider: 
       }
 
       const jmespathSource = { rows: sqlRows, columns: execResult?.columns ?? [], rowCount: execResult?.rowCount ?? 0 };
-      const data = jmespath.search(jmespathSource, parsed.jmespathQuery);
-      const props = { ...(parsed.staticProps ?? {}), data };
+      let data = jmespath.search(jmespathSource, parsed.jmespathQuery);
+      const popStaticProps = parsed.staticProps ?? {};
+
+      if (parsed.component === 'GeoMap' && Array.isArray(data)) {
+        data = (data as Record<string, unknown>[]).map((row) => {
+          const r = { ...row };
+          if (!('latitude' in r)) {
+            const latKey = Object.keys(r).find((k) => /^(lat|lat_decimal|y_coord)$/i.test(k));
+            if (latKey) { r['latitude'] = r[latKey]; delete r[latKey]; }
+          }
+          if (!('longitude' in r)) {
+            const lngKey = Object.keys(r).find((k) => /^(lng|lon|longitude|long_decimal|x_coord)$/i.test(k));
+            if (lngKey) { r['longitude'] = r[lngKey]; delete r[lngKey]; }
+          }
+          return r;
+        });
+        popStaticProps['latField'] = 'latitude';
+        popStaticProps['lngField'] = 'longitude';
+        if (!('labelField' in popStaticProps)) popStaticProps['labelField'] = 'label';
+      }
+
+      const props = { ...popStaticProps, data };
 
       return {
         suitableForVisualization: true,
@@ -499,7 +519,9 @@ export function buildNodes(toolMap: ToolMap, logger: PinoLogger, modelProvider: 
     'JMESPath rules:\n' +
     '1. The JMESPath query must extract only the fields needed by the selected component.\n' +
     '2. The JMESPath query must preserve the original column names unless the component requires specific property names.\n' +
-    '3. For map-like components, extract latitude, longitude, and a useful label or tooltip field when available.\n' +
+    '3. For GeoMap, the projection MUST output exactly "latitude", "longitude", and "label" as field names, regardless of source column names.\n' +
+    '   Example: rows[*].{latitude: lat_decimal, longitude: lng_decimal, label: site_name}\n' +
+    '   Always set staticProps latField="latitude" and lngField="longitude".\n' +
     '4. For chart components, extract the category/time field and the real measure field.\n' +
     '5. Do not invent fields that are not present in the SQL result.\n\n' +
 
@@ -584,10 +606,31 @@ export function buildNodes(toolMap: ToolMap, logger: PinoLogger, modelProvider: 
       }
 
       const jmespathSource = { rows: sqlRows, columns: execResult?.columns ?? [], rowCount: execResult?.rowCount ?? 0 };
-      const data = jmespath.search(jmespathSource, parsed.jmespathQuery);
+      let data = jmespath.search(jmespathSource, parsed.jmespathQuery);
+
+      const staticProps = parsed.staticProps ?? {};
+
+      // Normalize GeoMap row field names to always use latitude/longitude/label
+      if (parsed.component === 'GeoMap' && Array.isArray(data)) {
+        data = (data as Record<string, unknown>[]).map((row) => {
+          const r = { ...row };
+          if (!('latitude' in r)) {
+            const latKey = Object.keys(r).find((k) => /^(lat|lat_decimal|y_coord)$/i.test(k));
+            if (latKey) { r['latitude'] = r[latKey]; delete r[latKey]; }
+          }
+          if (!('longitude' in r)) {
+            const lngKey = Object.keys(r).find((k) => /^(lng|lon|longitude|long_decimal|x_coord)$/i.test(k));
+            if (lngKey) { r['longitude'] = r[lngKey]; delete r[lngKey]; }
+          }
+          return r;
+        });
+        staticProps['latField'] = 'latitude';
+        staticProps['lngField'] = 'longitude';
+        if (!('labelField' in staticProps)) staticProps['labelField'] = 'label';
+      }
 
       // For GeoMap the `data` field holds the SQL rows; staticProps holds all geo config
-      const props = { ...(parsed.staticProps ?? {}), data };
+      const props = { ...staticProps, data };
 
       return {
         suitableForVisualization: true,
