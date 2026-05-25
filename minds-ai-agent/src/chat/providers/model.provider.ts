@@ -1,10 +1,7 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { openai } from '@ai-sdk/openai';
 import { anthropic } from '@ai-sdk/anthropic';
-import { ChatAnthropic } from '@langchain/anthropic';
-import { ChatOpenAI } from '@langchain/openai';
 import type { LanguageModel } from 'ai';
-import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
 
 @Injectable()
 export class ModelProvider implements OnModuleInit {
@@ -20,18 +17,6 @@ export class ModelProvider implements OnModuleInit {
   getModel(): LanguageModel {
     const provider = process.env.AI_PROVIDER ?? this.provider;
     const modelId = process.env.AI_MODEL ?? this.modelId;
-    if (provider === 'anthropic') {
-      return anthropic(modelId);
-    }
-    return openai(modelId);
-  }
-
-  getChatModel(tags?: string[]): BaseChatModel {
-    const provider = process.env.AI_PROVIDER ?? this.provider;
-    const modelId = process.env.AI_MODEL ?? this.modelId;
-    if (provider === 'anthropic') {
-      return new ChatAnthropic({ model: modelId, tags });
-    }
-    return new ChatOpenAI({ model: modelId, tags });
+    return provider === 'anthropic' ? anthropic(modelId) : openai(modelId);
   }
 }

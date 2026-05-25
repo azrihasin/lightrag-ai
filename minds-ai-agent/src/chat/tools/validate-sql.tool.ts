@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import { tool } from '@langchain/core/tools';
+import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
-import type { ValidationStatus } from '../agent/agent.state';
+
+type ValidationStatus = 'pending' | 'valid' | 'invalid_recoverable' | 'invalid_blocking';
 
 const BLOCK_PATTERN =
   /\b(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|CREATE|GRANT|REVOKE|EXEC|EXECUTE|xp_|sp_)\b/i;
@@ -10,62 +11,53 @@ const RECOVER_PATTERN = /\b(UNION\s+ALL|UNION|INTO\s+OUTFILE|LOAD_FILE|BENCHMARK
 @Injectable()
 export class ValidateSqlTool {
   asTool() {
-    return tool(
-      async ({ actionId, sql, dialect }): Promise<{
-        actionId: string;
-        status: ValidationStatus;
-        reason: string;
-        safeSql: string | null;
-        riskLevel: 'safe' | 'low' | 'medium' | 'high';
-      }> => {
-        const trimmed = sql.trim();
+    return createTool({
+      id: 'validate_sql',
+      description:
+        'Validate SQL safety before execution. Returns valid | invalid_recoverable | invalid_blocking.',
+      inputSchema: z.object({
+        actionId: z.string(),
+        sql: z.string(),
+        dialect: z.enum(['postgres', 'mysql', 'sqlite', 'mssql']).optional().default('postgres'),
+      }),
+      execute: async (input) => {
+        const trimmed = input.sql.trim();
         if (BLOCK_PATTERN.test(trimmed)) {
           return {
-            actionId,
-            status: 'invalid_blocking',
+            actionId: input.actionId,
+            status: 'invalid_blocking' as ValidationStatus,
             reason: 'SQL contains unsafe write/DDL operation',
             safeSql: null,
-            riskLevel: 'high',
+            riskLevel: 'high' as const,
           };
         }
         if (RECOVER_PATTERN.test(trimmed)) {
           return {
-            actionId,
-            status: 'invalid_recoverable',
+            actionId: input.actionId,
+            status: 'invalid_recoverable' as ValidationStatus,
             reason: 'SQL contains potentially risky pattern; regenerate without it',
             safeSql: null,
-            riskLevel: 'medium',
+            riskLevel: 'medium' as const,
           };
         }
         const upper = trimmed.toUpperCase();
         if (!upper.startsWith('SELECT') && !upper.startsWith('WITH')) {
           return {
-            actionId,
-            status: 'invalid_recoverable',
-            reason: `Only SELECT/WITH queries allowed for dialect ${dialect}`,
+            actionId: input.actionId,
+            status: 'invalid_recoverable' as ValidationStatus,
+            reason: `Only SELECT/WITH queries allowed for dialect ${input.dialect}`,
             safeSql: null,
-            riskLevel: 'low',
+            riskLevel: 'low' as const,
           };
         }
         return {
-          actionId,
-          status: 'valid',
+          actionId: input.actionId,
+          status: 'valid' as ValidationStatus,
           reason: 'SQL passed safety validation',
           safeSql: trimmed,
-          riskLevel: 'safe',
+          riskLevel: 'safe' as const,
         };
       },
-      {
-        name: 'validate_sql',
-        description:
-          'Validate SQL safety and dialect compliance before execution. ' +
-          'Returns valid | invalid_recoverable | invalid_blocking. Must be called before execute_sql.',
-        schema: z.object({
-          actionId: z.string(),
-          sql: z.string(),
-          dialect: z.enum(['postgres', 'mysql', 'sqlite', 'mssql']).optional().default('postgres'),
-        }),
-      },
-    );
+    });
   }
 }

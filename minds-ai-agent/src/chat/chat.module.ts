@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ChatHistoryModule } from '../chat-history/chat-history.module';
 import { ChatController } from './chat.controller';
 import { ChatService } from './chat.service';
+import { MindsAgentService } from './agent/minds-agent.service';
 import { ModelProvider } from './providers/model.provider';
 import { ToolRegistry } from './tools/tool-registry';
 import { RetrieveContextTool } from './tools/retrieve-context.tool';
@@ -17,7 +18,6 @@ import { PrepareVisualizationTool } from './tools/prepare-visualization.tool';
 import { RenderVisualizationTool } from './tools/render-visualization.tool';
 import { HumanReviewGateTool } from './tools/human-review-gate.tool';
 import { SummarizeResultTool } from './tools/summarize-result.tool';
-import { ComposeResponseTool } from './tools/compose-response.tool';
 import { SearchTool } from './tools/search.tool';
 import { CalculatorTool } from './tools/calculator.tool';
 
@@ -25,6 +25,7 @@ import { CalculatorTool } from './tools/calculator.tool';
   imports: [ChatHistoryModule],
   controllers: [ChatController],
   providers: [
+    MindsAgentService,
     RetrieveContextTool,
     AnswerFromContextTool,
     ClarificationRequestTool,
@@ -38,7 +39,6 @@ import { CalculatorTool } from './tools/calculator.tool';
     RenderVisualizationTool,
     HumanReviewGateTool,
     SummarizeResultTool,
-    ComposeResponseTool,
     SearchTool,
     CalculatorTool,
     ToolRegistry,

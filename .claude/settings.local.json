@@ -7,7 +7,10 @@
       "Bash(Select-Object -First 20)",
       "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\User\\\\Desktop\\\\lightrag-ai\" -Directory)",
       "Bash(Select-Object Name)",
-      "Bash(node -e \"const ai = require\\('ai'\\); console.log\\(typeof ai.tool, Object.keys\\(ai\\).filter\\(k=>k.includes\\('tool'\\)\\)\\)\")"
+      "Bash(node -e \"const ai = require\\('ai'\\); console.log\\(typeof ai.tool, Object.keys\\(ai\\).filter\\(k=>k.includes\\('tool'\\)\\)\\)\")",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\C00570\\\\Desktop\\\\lightrag-ai\\\\minds-ai-agent\\\\src\" -Recurse -File)",
+      "Bash(Select-Object FullName)",
+      "Bash(Format-Table -AutoSize)"
     ]
   }
 }
