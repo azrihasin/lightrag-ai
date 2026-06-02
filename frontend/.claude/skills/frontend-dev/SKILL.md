@@ -92,6 +92,14 @@ This generates the file at `src/components/ui/<component>.tsx`.
 2. Export a component that accepts `ToolCallMessagePartComponent` props.
 3. Register it in the tool-agent map (`src/lib/tool-agent-map.ts`) so `ToolFallbackWithAgent` resolves it.
 
+## No Tests or Mocks
+
+This project skips tests entirely to stay focused on implementation.
+
+- **Never** create `*.spec.ts`, `*.test.ts`, `__mocks__/`, or any mock/stub/spy helpers.
+- **Never** suggest adding Vitest/Jest config, test runners, or test coverage tooling.
+- If asked to write a test, redirect focus to the implementation instead.
+
 ## Starting the dev server
 ```bash
 cd frontend

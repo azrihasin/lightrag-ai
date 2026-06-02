@@ -1,22 +1,35 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
-import { openai } from '@ai-sdk/openai';
-import { anthropic } from '@ai-sdk/anthropic';
+import { Injectable } from '@nestjs/common';
+import { createOpenAI } from '@ai-sdk/openai';
 import type { LanguageModel } from 'ai';
 
 @Injectable()
-export class ModelProvider implements OnModuleInit {
-  private provider: string;
-  private modelId: string;
+export class ModelProvider {
+  private readonly modelId: string;
+  private readonly baseURL: string;
 
-  onModuleInit() {
-    this.provider = process.env.AI_PROVIDER ?? 'openai';
-    this.modelId = process.env.AI_MODEL ?? (this.provider === 'anthropic' ? 'claude-sonnet-4-6' : 'gpt-4o-mini');
-    console.log(`ModelProvider ready: provider=${this.provider} model=${this.modelId}`);
+  constructor() {
+    this.modelId = process.env.AI_MODEL ?? 'deepseek-chat';
+    this.baseURL = process.env.LLM_BINDING_HOST ?? 'https://api.openai.com/v1';
+    console.log(`ModelProvider ready: model=${this.modelId} baseURL=${this.baseURL}`);
+  }
+
+  /**
+   * True for providers that do not support response_format: json_schema
+   * (e.g. DeepSeek). When true, agents should use jsonPromptInjection for
+   * structured output so Mastra falls back to prompt-based JSON coercion.
+   */
+  get needsJsonPromptInjection(): boolean {
+    return this.baseURL.includes('deepseek.com') || this.modelId.startsWith('deepseek');
   }
 
   getModel(): LanguageModel {
-    const provider = process.env.AI_PROVIDER ?? this.provider;
-    const modelId = process.env.AI_MODEL ?? this.modelId;
-    return provider === 'anthropic' ? anthropic(modelId) : openai(modelId);
+    const openaiProvider = createOpenAI({
+      baseURL: this.baseURL,
+      apiKey: process.env.OPENAI_API_KEY,
+    });
+
+    return this.needsJsonPromptInjection
+      ? openaiProvider.chat(this.modelId)
+      : openaiProvider(this.modelId);
   }
 }

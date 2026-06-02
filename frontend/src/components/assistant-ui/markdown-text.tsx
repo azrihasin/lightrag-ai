@@ -12,7 +12,6 @@ import remarkGfm from "remark-gfm";
 import { type FC, memo, useState } from "react";
 import { CheckIcon, CopyIcon } from "lucide-react";
 
-import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import { cn } from "@/lib/utils";
 
 const MarkdownTextImpl = () => {
@@ -27,43 +26,31 @@ const MarkdownTextImpl = () => {
 
 export const MarkdownText = memo(MarkdownTextImpl);
 
+// GitHub-style code block header — language label on the left, copy button on the right.
 const CodeHeader: FC<CodeHeaderProps> = ({ language, code }) => {
-  const { isCopied, copyToClipboard } = useCopyToClipboard();
+  const [copied, setCopied] = useState(false);
+
   const onCopy = () => {
-    if (!code || isCopied) return;
-    copyToClipboard(code);
-  };
-
-  return (
-    <div className="aui-code-header-root mt-2.5 flex items-center justify-between rounded-t-lg border border-border/50 border-b-0 bg-muted/50 px-3 py-1.5 text-xs">
-      <span className="aui-code-header-language font-medium text-muted-foreground lowercase">
-        {language}
-      </span>
-      <TooltipIconButton tooltip="Copy" onClick={onCopy}>
-        {!isCopied && <CopyIcon />}
-        {isCopied && <CheckIcon />}
-      </TooltipIconButton>
-    </div>
-  );
-};
-
-const useCopyToClipboard = ({
-  copiedDuration = 3000,
-}: {
-  copiedDuration?: number;
-} = {}) => {
-  const [isCopied, setIsCopied] = useState<boolean>(false);
-
-  const copyToClipboard = (value: string) => {
-    if (!value) return;
-
-    navigator.clipboard.writeText(value).then(() => {
-      setIsCopied(true);
-      setTimeout(() => setIsCopied(false), copiedDuration);
+    if (!code || copied) return;
+    navigator.clipboard.writeText(code).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
     });
   };
 
-  return { isCopied, copyToClipboard };
+  return (
+    <div className="mt-2.5 flex items-center rounded-t-xl bg-[oklch(0.97_0_0)] px-3 py-2 dark:bg-[oklch(0.16_0_0)]">
+      <span className="text-sm font-medium select-none">{language}</span>
+      <button
+        onClick={onCopy}
+        type="button"
+        aria-label="Copy"
+        className="ml-auto inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-black/5 hover:text-foreground dark:hover:bg-white/10"
+      >
+        {copied ? <CheckIcon className="size-4" /> : <CopyIcon className="size-4" />}
+      </button>
+    </div>
+  );
 };
 
 const defaultComponents = memoizeMarkdownComponents({
@@ -220,7 +207,7 @@ const defaultComponents = memoizeMarkdownComponents({
   pre: ({ className, ...props }) => (
     <pre
       className={cn(
-        "aui-md-pre overflow-x-auto rounded-t-none rounded-b-lg border border-border/50 border-t-0 bg-muted/30 p-3 text-xs leading-relaxed",
+        "aui-md-pre overflow-x-auto rounded-t-none rounded-b-xl bg-[oklch(0.97_0_0)] dark:bg-[oklch(0.16_0_0)] p-4 text-xs font-mono leading-relaxed",
         className,
       )}
       {...props}
@@ -231,8 +218,9 @@ const defaultComponents = memoizeMarkdownComponents({
     return (
       <code
         className={cn(
-          !isCodeBlock &&
-            "aui-md-inline-code rounded-md border border-border/50 bg-muted/50 px-1.5 py-0.5 font-mono text-[0.85em]",
+          isCodeBlock
+            ? "text-[#1f2328] dark:text-[#e6edf3]"
+            : "aui-md-inline-code rounded px-1.5 py-0.5 font-mono text-[0.85em] bg-[#afb8c133] border border-[#d0d7de] dark:bg-[#6e768166] dark:border-[#30363d] text-[#1f2328] dark:text-[#e6edf3]",
           className,
         )}
         {...props}

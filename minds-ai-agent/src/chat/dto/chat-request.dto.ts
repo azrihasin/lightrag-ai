@@ -65,6 +65,12 @@ export const ChatRequestSchema = z.object({
   // id: AssistantUI thread ID sent by AssistantChatTransport (equals session ID)
   sessionId: z.string().optional(),
   id: z.string().optional(),
+  // threadId: the real Mastra thread UUID sent explicitly by the frontend.
+  // Preferred over `id`, which the AI SDK transport hardcodes to "DEFAULT_THREAD_ID".
+  threadId: z.string().optional(),
+  // resourceId: identifies the user (Mastra's resource lifecycle owner).
+  // Sent by the frontend and stored on every Mastra thread + message.
+  resourceId: z.string().optional(),
   enableUiDiscovery: z.boolean().optional().default(true),
 }).passthrough();
 

@@ -1,0 +1,24 @@
+---
+description: Never write tests, mocks, or test infrastructure — focus on implementation only
+alwaysApply: true
+---
+
+# No Tests or Mocks
+
+This project is in active implementation phase. **Never** create or suggest:
+
+- `*.spec.ts` / `*.test.ts` files
+- `__mocks__/` directories or any mock files (`*.mock.ts`)
+- Jest/Vitest setup, test runners, or test configuration
+- Mock factories, stub helpers, or spy utilities
+- `describe`, `it`, `test`, `expect`, `jest.fn()`, `vi.fn()` blocks
+
+## What to do instead
+
+- Implement the real feature directly
+- Use real services and real dependencies
+- If validation is needed, add runtime guards or logging in the implementation itself
+
+## Applies to all files in this repo
+
+If asked to "add tests" or "write a test", respond that the project is skipping tests for now and focus on the implementation request instead.

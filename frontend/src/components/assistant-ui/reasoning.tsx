@@ -8,7 +8,7 @@ import {
   type FC,
   type PropsWithChildren,
 } from "react";
-import { ChevronDownIcon, LoaderIcon } from "lucide-react";
+import { ChevronDownIcon, LoaderIcon, CopyIcon, CheckIcon } from "lucide-react";
 import { cva, type VariantProps } from "class-variance-authority";
 import { useScrollLock } from "@assistant-ui/react";
 import type {
@@ -27,7 +27,7 @@ import { cn } from "@/lib/utils";
 const ANIMATION_DURATION = 200;
 
 const reasoningVariants = cva(
-  "aui-reasoning-root group/reasoning-root w-full",
+  "aui-reasoning-root group/reasoning-root w-full mb-4",
   {
     variants: {
       variant: {
@@ -192,6 +192,72 @@ function ReasoningContent({
   );
 }
 
+// ── GitHub-style code block ───────────────────────────────────────────────────
+
+function GitHubCodeBlock({ lang, code }: { lang: string; code: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const onCopy = () => {
+    navigator.clipboard.writeText(code).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  return (
+    <div className="not-prose my-2 overflow-hidden rounded-md border border-[#d0d7de] dark:border-[#30363d] text-xs font-mono">
+      <div className="flex items-center justify-between px-4 py-1.5 bg-[#f6f8fa] dark:bg-[#161b22] border-b border-[#d0d7de] dark:border-[#30363d]">
+        <span className="text-[#57606a] dark:text-[#8b949e] select-none">{lang}</span>
+        <button
+          onClick={onCopy}
+          className="flex items-center gap-1 text-[#57606a] dark:text-[#8b949e] hover:text-foreground transition-colors p-0.5 rounded"
+          aria-label="Copy code"
+        >
+          {copied ? (
+            <CheckIcon className="size-3.5" />
+          ) : (
+            <CopyIcon className="size-3.5" />
+          )}
+        </button>
+      </div>
+      <pre className="overflow-x-auto p-4 m-0 bg-[#f6f8fa] dark:bg-[#0d1117] leading-relaxed">
+        <code className="text-[#1f2328] dark:text-[#e6edf3]">{code}</code>
+      </pre>
+    </div>
+  );
+}
+
+// Markdown components for ReasoningText — code blocks use GitHub styling,
+// inline code uses a muted chip. Everything else falls back to prose defaults.
+const reasoningMarkdownComponents = {
+  pre({ children }: { children?: React.ReactNode }) {
+    // The GitHubCodeBlock renders its own <pre>; this wrapper is transparent.
+    return <>{children}</>;
+  },
+  code({
+    className,
+    children,
+  }: {
+    className?: string;
+    children?: React.ReactNode;
+  }) {
+    const match = /language-(\w+)/.exec(className ?? "");
+    const lang = match?.[1];
+    const codeStr = String(children ?? "").replace(/\n$/, "");
+
+    if (lang) {
+      return <GitHubCodeBlock lang={lang} code={codeStr} />;
+    }
+
+    // Inline code
+    return (
+      <code className="rounded px-1.5 py-0.5 font-mono text-[0.85em] bg-[#afb8c133] border border-[#d0d7de] dark:bg-[#6e768166] dark:border-[#30363d] text-[#1f2328] dark:text-[#e6edf3] not-italic">
+        {children}
+      </code>
+    );
+  },
+} as Parameters<typeof ReactMarkdown>[0]["components"];
+
 function ReasoningText({
   children,
   className,
@@ -206,7 +272,9 @@ function ReasoningText({
       )}
       {...props}
     >
-      <ReactMarkdown remarkPlugins={[remarkGfm]}>{children}</ReactMarkdown>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={reasoningMarkdownComponents}>
+        {children}
+      </ReactMarkdown>
     </div>
   );
 }

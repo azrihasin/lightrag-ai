@@ -64,10 +64,21 @@ export class ChatHistoryService {
   }
 
   async ensureSession(sessionId: string | undefined, userId?: string): Promise<string> {
-    if (sessionId) {
-      const exists = await this.sessions.findById(sessionId);
-      if (exists) return sessionId;
+    // Reject non-UUID ids (e.g. AssistantUI's hardcoded "DEFAULT_THREAD_ID") so they
+    // never become permanent keys that accumulate all conversation history.
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const validId = sessionId && UUID_RE.test(sessionId) ? sessionId : undefined;
+
+    if (validId) {
+      const exists = await this.sessions.findById(validId);
+      // Don't reuse an archived session — create a fresh one with the same ID instead.
+      if (exists && !exists.archived_at) return validId;
+      if (!exists) {
+        const session = await this.sessions.create({ id: validId, userId });
+        return session.id;
+      }
     }
+    // No valid id, or the session was archived: start a new anonymous session.
     const session = await this.sessions.create({ userId });
     return session.id;
   }

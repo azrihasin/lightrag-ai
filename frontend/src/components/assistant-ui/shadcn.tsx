@@ -9,15 +9,7 @@ import { ThreadList } from "@/components/assistant-ui/thread-list";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableFooter,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { SqlDataTable } from "@/components/sql-data-table";
 import { ModelSelector } from "@/components/model-selector";
 import { MODELS } from "@/constants/model";
 import { registry } from "@/lib/registry";
@@ -370,50 +362,13 @@ type SqlTableProps = {
 function FinalSqlResultTable({ columns, rows, rowCount }: SqlTableProps) {
   if (!columns.length) return null;
   return (
-    <div className="mt-4 rounded-md border overflow-hidden">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            {columns.map((col) => (
-              <TableHead key={col}>{col}</TableHead>
-            ))}
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {rows.length === 0 ? (
-            <TableRow>
-              <TableCell colSpan={columns.length} className="py-4 text-center text-muted-foreground">
-                No rows returned
-              </TableCell>
-            </TableRow>
-          ) : (
-            rows.map((row, i) => (
-              <TableRow key={i}>
-                {columns.map((col) => {
-                  const cell = row[col];
-                  return (
-                    <TableCell key={col}>
-                      {cell === null || cell === undefined ? (
-                        <span className="italic text-muted-foreground">NULL</span>
-                      ) : (
-                        String(cell)
-                      )}
-                    </TableCell>
-                  );
-                })}
-              </TableRow>
-            ))
-          )}
-        </TableBody>
-        <TableFooter>
-          <TableRow>
-            <TableCell colSpan={columns.length} className="text-xs text-muted-foreground">
-              {rowCount} {rowCount === 1 ? "row" : "rows"}
-            </TableCell>
-          </TableRow>
-        </TableFooter>
-      </Table>
-    </div>
+    <SqlDataTable
+      columns={columns}
+      rows={rows}
+      rowCount={rowCount}
+      isComplete
+      className="mt-4"
+    />
   );
 }
 

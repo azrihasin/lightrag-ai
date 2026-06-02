@@ -138,11 +138,18 @@ Always include `"Reply with a single JSON object only. No markdown fences."` imp
 5. (Optional) Add a graph node that calls the tool, wire edges in `buildGraph()`.
 6. Update `resolveToolName`, `resolveStartingMessage`, `extractNodeArgs`, `summarizeNodeOutput`.
 
+## No Tests or Mocks
+
+This project skips tests entirely to stay focused on implementation.
+
+- **Never** create `*.spec.ts`, `*.test.ts`, `__mocks__/`, or any mock/stub/spy helpers.
+- **Never** suggest adding Jest config, test runners, or test coverage tooling.
+- If asked to write a test, redirect focus to the implementation instead.
+
 ## Running the service
 ```bash
 cd minds-ai-agent
 npm run start:dev   # watch mode with hot reload
-npm run test        # Jest unit tests
 ```
 
 The service listens on port **3000** by default and exposes `/api` (Swagger UI at `/api/docs`).

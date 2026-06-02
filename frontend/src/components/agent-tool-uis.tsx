@@ -9,15 +9,8 @@ import { FileTextIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Streamdown } from "streamdown";
 import { useJmespathStore } from "@/lib/jmespath-store";
-import {
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  TableCell,
-} from "@/components/ui/table";
-import { Button } from "@/components/ui/button";
+import { SqlDataTable } from "@/components/sql-data-table";
+import { CodeBlock } from "@/components/assistant-ui/code-block";
 import {
   ChainOfThought,
   ChainOfThoughtContent,
@@ -160,15 +153,12 @@ function RetrieveContextStream({
     if (!streamingText) return null;
     return (
       <ChainOfThoughtItem>
-        <div className="overflow-hidden rounded-md border border-border bg-muted/40">
-          <div className="border-b border-border px-3 py-1.5 flex items-center gap-2">
-            <span className="text-xs font-medium text-muted-foreground">Retrieving Context</span>
-            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-blue-400" />
-          </div>
-          <pre className="overflow-x-auto p-3 text-xs leading-relaxed text-foreground whitespace-pre-wrap">
-            <code>{streamingText}</code>
-          </pre>
-        </div>
+        <CodeBlock
+          label="Retrieving Context"
+          code={streamingText}
+          meta={<span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-blue-400" />}
+          bodyClassName="whitespace-pre-wrap"
+        />
       </ChainOfThoughtItem>
     );
   }
@@ -177,14 +167,7 @@ function RetrieveContextStream({
     if (!streamingText) return null;
     return (
       <ChainOfThoughtItem>
-        <div className="overflow-hidden rounded-md border border-border bg-muted/40">
-          <div className="border-b border-border px-3 py-1.5">
-            <span className="text-xs font-medium text-muted-foreground">Retrieved Context</span>
-          </div>
-          <pre className="overflow-x-auto p-3 text-xs leading-relaxed text-foreground whitespace-pre-wrap">
-            <code>{streamingText}</code>
-          </pre>
-        </div>
+        <CodeBlock label="Retrieved Context" code={streamingText} bodyClassName="whitespace-pre-wrap" />
       </ChainOfThoughtItem>
     );
   }
@@ -202,14 +185,7 @@ function RetrieveContextStream({
     if (!streamingText) return null;
     return (
       <ChainOfThoughtItem>
-        <div className="overflow-hidden rounded-md border border-border bg-muted/40">
-          <div className="border-b border-border px-3 py-1.5">
-            <span className="text-xs font-medium text-muted-foreground">Retrieved Context</span>
-          </div>
-          <pre className="overflow-x-auto p-3 text-xs leading-relaxed text-foreground whitespace-pre-wrap">
-            <code>{streamingText}</code>
-          </pre>
-        </div>
+        <CodeBlock label="Retrieved Context" code={streamingText} bodyClassName="whitespace-pre-wrap" />
       </ChainOfThoughtItem>
     );
   }
@@ -218,14 +194,7 @@ function RetrieveContextStream({
     <>
       {answer && (
         <ChainOfThoughtItem>
-          <div className="overflow-hidden rounded-md border border-border bg-muted/40">
-            <div className="border-b border-border px-3 py-1.5">
-              <span className="text-xs font-medium text-muted-foreground">Retrieved Context</span>
-            </div>
-            <pre className="overflow-x-auto p-3 text-xs leading-relaxed text-foreground whitespace-pre-wrap">
-              <code>{answer.content}</code>
-            </pre>
-          </div>
+          <CodeBlock label="Retrieved Context" code={answer.content} bodyClassName="whitespace-pre-wrap" />
         </ChainOfThoughtItem>
       )}
 
@@ -353,12 +322,30 @@ function SqlResultTable({
   status: StatusType;
 }) {
   const isRunning = status?.type === "running";
-  const tableData = useSqlTableStreamStore((s) => s.tables[toolCallId] ?? null);
-  const [page, setPage] = useState(0);
+  const liveTableData = useSqlTableStreamStore((s) => s.tables[toolCallId] ?? null);
 
-  useEffect(() => {
-    setPage(0);
-  }, [toolCallId]);
+  // When the live store is empty (e.g. after page refresh) fall back to
+  // parsing the persisted result prop from the loaded message history.
+  const tableData = useMemo(() => {
+    if (liveTableData) return liveTableData;
+    if (!result) return null;
+    try {
+      const parsed = JSON.parse(result) as Record<string, unknown>;
+      if (parsed.success === false) return null; // error result — handled below
+      if (Array.isArray(parsed.rows)) {
+        const rows = parsed.rows as Record<string, unknown>[];
+        return {
+          columns: (parsed.columns as string[]) ?? Object.keys(rows[0] ?? {}),
+          rows,
+          rowCount: (parsed.rowCount as number) ?? rows.length,
+          isComplete: true,
+        };
+      }
+    } catch {
+      // not a SQL result JSON
+    }
+    return null;
+  }, [liveTableData, result]);
 
   const errorMessage = useMemo<string | null>(() => {
     if (!result || typeof result !== "string") return null;
@@ -397,98 +384,48 @@ function SqlResultTable({
     return null;
   }
 
-  const totalRows = tableData.rows.length;
-  const totalPages = Math.max(1, Math.ceil(totalRows / PAGE_SIZE));
-  const safePage = Math.min(page, totalPages - 1);
-  const pagedRows = tableData.rows.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
-  const showPagination = totalRows > PAGE_SIZE;
-  const rowCount = tableData.rowCount ?? totalRows;
-
   return (
     <ChainOfThoughtItem>
-      <div className="overflow-hidden rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              {tableData.columns.map((col) => (
-                <TableHead key={col}>{col}</TableHead>
-              ))}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {totalRows === 0 && tableData.isComplete ? (
-              <TableRow>
-                <TableCell
-                  colSpan={tableData.columns.length}
-                  className="py-4 text-center text-muted-foreground"
-                >
-                  No rows returned
-                </TableCell>
-              </TableRow>
-            ) : (
-              pagedRows.map((row, i) => (
-                <TableRow key={safePage * PAGE_SIZE + i}>
-                  {tableData.columns.map((col) => {
-                    const cell = row[col];
-                    return (
-                      <TableCell key={col}>
-                        {cell === null || cell === undefined ? (
-                          <span className="italic text-muted-foreground">NULL</span>
-                        ) : (
-                          String(cell)
-                        )}
-                      </TableCell>
-                    );
-                  })}
-                </TableRow>
-              ))
-            )}
-            {isRunning && totalRows > 0 && (
-              <TableRow>
-                <TableCell colSpan={tableData.columns.length} className="py-1">
-                  <span className="inline-block h-3 w-1.5 animate-pulse bg-current opacity-50" />
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </div>
-      <div className="flex items-center justify-end space-x-2 py-4">
-        <span className="flex-1 text-xs text-muted-foreground">
-          {tableData.isComplete
-            ? `${rowCount} ${rowCount === 1 ? "row" : "rows"}`
-            : `${totalRows} ${totalRows === 1 ? "row" : "rows"} so far…`}
-        </span>
-        {showPagination && (
-          <>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setPage((p) => Math.max(0, p - 1))}
-              disabled={safePage === 0}
-            >
-              Previous
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
-              disabled={safePage >= totalPages - 1}
-            >
-              Next
-            </Button>
-          </>
-        )}
-      </div>
+      <SqlDataTable
+        columns={tableData.columns}
+        rows={tableData.rows}
+        rowCount={tableData.rowCount}
+        isComplete={tableData.isComplete}
+        isRunning={isRunning}
+        pageSize={PAGE_SIZE}
+      />
     </ChainOfThoughtItem>
   );
 }
 
 // ─── Phase 2 – SQL / Action ───────────────────────────────────────────────────
 
-function SqlCodeBlock({ toolCallId, status }: { toolCallId: string; status: StatusType }) {
-  const entry = useSqlGeneratedStore((s) => s.queries[toolCallId] ?? null);
+function SqlCodeBlock({
+  toolCallId,
+  status,
+  result,
+}: {
+  toolCallId: string;
+  status: StatusType;
+  result?: string;
+}) {
+  const liveEntry = useSqlGeneratedStore((s) => s.queries[toolCallId] ?? null);
   const isRunning = status?.type === "running";
+
+  // Fall back to parsing the persisted result prop after a page refresh.
+  const entry = useMemo(() => {
+    if (liveEntry) return liveEntry;
+    if (!result) return null;
+    try {
+      const parsed = JSON.parse(result) as Record<string, unknown>;
+      if (typeof parsed.sql === "string") {
+        return { sql: parsed.sql, dialect: (parsed.dialect as string) ?? "sql" };
+      }
+    } catch {
+      // not a generate_sql result
+    }
+    return null;
+  }, [liveEntry, result]);
 
   if (!entry) {
     if (isRunning) {
@@ -506,28 +443,20 @@ function SqlCodeBlock({ toolCallId, status }: { toolCallId: string; status: Stat
 
   return (
     <ChainOfThoughtItem>
-      <div className="overflow-hidden rounded-md border border-border bg-muted/40">
-        <div className="flex items-center justify-between border-b border-border px-3 py-1.5">
-          <span className="text-xs font-medium text-muted-foreground">SQL</span>
-          <span className="text-xs text-muted-foreground/60">{entry.dialect}</span>
-        </div>
-        <pre className="overflow-x-auto p-3 text-xs leading-relaxed text-foreground">
-          <code>{entry.sql}</code>
-        </pre>
-      </div>
+      <CodeBlock label="SQL" code={entry.sql} meta={entry.dialect} />
     </ChainOfThoughtItem>
   );
 }
 
 export const GenerateSqlUI: ToolCallMessagePartComponent = memo(
-  ({ status, toolCallId }) => (
+  ({ status, toolCallId, result }) => (
     <AgentToolGroup
       label="Generate SQL"
       status={status}
       toolCallId={toolCallId}
       icon={<Code2 className="size-4" />}
     >
-      <SqlCodeBlock toolCallId={toolCallId} status={status} />
+      <SqlCodeBlock toolCallId={toolCallId} status={status} result={result} />
     </AgentToolGroup>
   ),
 );
@@ -637,14 +566,7 @@ function JmespathCodeBlock({ toolCallId, result }: { toolCallId?: string; result
 
   return (
     <ChainOfThoughtItem>
-      <div className="overflow-hidden rounded-md border border-border bg-muted/40">
-        <div className="border-b border-border px-3 py-1.5">
-          <span className="text-xs font-medium text-muted-foreground">JMESPath Query</span>
-        </div>
-        <pre className="overflow-x-auto p-3 text-xs leading-relaxed text-foreground">
-          <code>{query}</code>
-        </pre>
-      </div>
+      <CodeBlock label="JMESPath Query" code={query} />
     </ChainOfThoughtItem>
   );
 }
@@ -687,15 +609,12 @@ function JmespathResultCodeBlock({ result, status }: { result?: string; status: 
 
   return (
     <ChainOfThoughtItem>
-      <div className="overflow-hidden rounded-md border border-border bg-muted/40">
-        <div className="flex items-center justify-between border-b border-border px-3 py-1.5">
-          <span className="text-xs font-medium text-muted-foreground">Render Spec</span>
-          <span className="text-xs text-muted-foreground/60">{String(dataSpec.componentType ?? "")}</span>
-        </div>
-        <pre className="overflow-x-auto p-3 text-xs leading-relaxed text-foreground max-h-64">
-          <code>{JSON.stringify(dataSpec, null, 2)}</code>
-        </pre>
-      </div>
+      <CodeBlock
+        label="Render Spec"
+        code={JSON.stringify(dataSpec, null, 2)}
+        meta={String(dataSpec.componentType ?? "")}
+        bodyClassName="max-h-64"
+      />
     </ChainOfThoughtItem>
   );
 }

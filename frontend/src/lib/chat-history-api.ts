@@ -3,6 +3,10 @@ const BASE = (import.meta.env.VITE_API_URL ?? "http://localhost:3000/api/chat").
   "/chat-history",
 );
 
+const CHAT_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:3000/api/chat";
+
+// ─── Legacy session types (existing /api/chat-history endpoints) ──────────────
+
 export interface ChatSession {
   id: string;
   user_id: string | null;
@@ -35,6 +39,52 @@ export interface SessionWithMessages extends ChatSession {
   messages: ChatMessage[];
 }
 
+// ─── Mastra thread types (new /api/chat/threads endpoints) ───────────────────
+
+export interface MastraThread {
+  id: string;
+  resourceId: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface MastraMessagePart {
+  type: string;
+  text?: string;
+  reasoning?: string;
+  toolInvocation?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+export interface MastraMessage {
+  id: string;
+  threadId: string;
+  resourceId?: string;
+  role: "user" | "assistant" | "system" | "signal";
+  type: string;
+  createdAt: string;
+  parts: MastraMessagePart[];
+  metadata?: Record<string, unknown>;
+}
+
+/** Visualization payload re-hydrated by the rerun endpoint. */
+export interface RerunVisualizationSpec {
+  componentType: string;
+  props: Record<string, unknown>;
+}
+
+/** Fresh result returned by POST /api/chat/rerun. */
+export interface RerunResult {
+  columns: Array<{ name: string; type: string }>;
+  rows: Record<string, unknown>[];
+  rowCount: number;
+  spec?: RerunVisualizationSpec;
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     headers: { "Content-Type": "application/json" },
@@ -47,6 +97,21 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
 }
+
+async function chatRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${CHAT_BASE}${path}`, {
+    headers: { "Content-Type": "application/json" },
+    ...init,
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    throw new Error(`chat API ${res.status}: ${text}`);
+  }
+  if (res.status === 204) return undefined as T;
+  return res.json() as Promise<T>;
+}
+
+// ─── Legacy session API (kept for backward compat) ───────────────────────────
 
 export const chatHistoryApi = {
   createSession(params?: { user_id?: string; title?: string; metadata?: Record<string, unknown> }) {
@@ -79,5 +144,33 @@ export const chatHistoryApi = {
 
   archiveSession(id: string) {
     return request<void>(`/sessions/${encodeURIComponent(id)}/archive`, { method: "POST" });
+  },
+};
+
+// ─── Mastra thread API ────────────────────────────────────────────────────────
+
+export const mastraThreadApi = {
+  listThreads(resourceId: string, limit = 50): Promise<MastraThread[]> {
+    const qs = new URLSearchParams({ resourceId, limit: String(limit) });
+    return chatRequest<MastraThread[]>(`/threads?${qs}`);
+  },
+
+  getThreadMessages(threadId: string, resourceId: string): Promise<MastraMessage[]> {
+    const qs = new URLSearchParams({ resourceId });
+    return chatRequest<MastraMessage[]>(`/threads/${encodeURIComponent(threadId)}/messages?${qs}`);
+  },
+
+  rerunMessage(threadId: string, messageId: string, resourceId: string): Promise<RerunResult> {
+    return chatRequest<RerunResult>("/rerun", {
+      method: "POST",
+      body: JSON.stringify({ threadId, messageId, resourceId }),
+    });
+  },
+
+  deleteThread(threadId: string, resourceId: string): Promise<void> {
+    const qs = new URLSearchParams({ resourceId });
+    return chatRequest<void>(`/threads/${encodeURIComponent(threadId)}?${qs}`, {
+      method: "DELETE",
+    });
   },
 };

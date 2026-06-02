@@ -2,16 +2,10 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   AuiIf,
-  ThreadListItemMorePrimitive,
   ThreadListItemPrimitive,
   ThreadListPrimitive,
 } from "@assistant-ui/react";
-import {
-  ArchiveIcon,
-  MoreHorizontalIcon,
-  PlusIcon,
-  TrashIcon,
-} from "lucide-react";
+import { PlusIcon, TrashIcon } from "lucide-react";
 import type { FC } from "react";
 
 export const ThreadList: FC = () => {
@@ -69,42 +63,23 @@ const ThreadListItem: FC = () => {
           <ThreadListItemPrimitive.Title fallback="New Chat" />
         </span>
       </ThreadListItemPrimitive.Trigger>
-      <ThreadListItemMore />
+      <ThreadListItemDelete />
     </ThreadListItemPrimitive.Root>
   );
 };
 
-const ThreadListItemMore: FC = () => {
+const ThreadListItemDelete: FC = () => {
   return (
-    <ThreadListItemMorePrimitive.Root>
-      <ThreadListItemMorePrimitive.Trigger asChild>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="aui-thread-list-item-more mr-2 size-7 p-0 opacity-0 transition-opacity group-hover:opacity-100 data-[state=open]:bg-accent data-[state=open]:opacity-100 group-data-active:opacity-100"
-        >
-          <MoreHorizontalIcon className="size-4" />
-          <span className="sr-only">More options</span>
-        </Button>
-      </ThreadListItemMorePrimitive.Trigger>
-      <ThreadListItemMorePrimitive.Content
-        side="bottom"
-        align="start"
-        className="aui-thread-list-item-more-content z-50 min-w-32 overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
+    <ThreadListItemPrimitive.Delete asChild>
+      <Button
+        variant="ghost"
+        size="icon"
+        title="Delete chat"
+        className="aui-thread-list-item-delete mr-2 size-7 p-0 text-muted-foreground opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100 group-data-active:opacity-100"
       >
-        <ThreadListItemPrimitive.Archive asChild>
-          <ThreadListItemMorePrimitive.Item className="aui-thread-list-item-more-item flex cursor-pointer select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground">
-            <ArchiveIcon className="size-4" />
-            Archive
-          </ThreadListItemMorePrimitive.Item>
-        </ThreadListItemPrimitive.Archive>
-        <ThreadListItemPrimitive.Delete asChild>
-          <ThreadListItemMorePrimitive.Item className="aui-thread-list-item-more-item flex cursor-pointer select-none items-center gap-2 rounded-sm px-2 py-1.5 text-destructive text-sm outline-none hover:bg-destructive/10 hover:text-destructive focus:bg-destructive/10 focus:text-destructive">
-            <TrashIcon className="size-4" />
-            Delete
-          </ThreadListItemMorePrimitive.Item>
-        </ThreadListItemPrimitive.Delete>
-      </ThreadListItemMorePrimitive.Content>
-    </ThreadListItemMorePrimitive.Root>
+        <TrashIcon className="size-4" />
+        <span className="sr-only">Delete chat</span>
+      </Button>
+    </ThreadListItemPrimitive.Delete>
   );
 };

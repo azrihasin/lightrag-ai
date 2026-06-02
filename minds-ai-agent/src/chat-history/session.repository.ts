@@ -37,11 +37,12 @@ export class SessionRepository {
   constructor(@Inject(CHAT_DB_POOL) private readonly pool: ChatPool) {}
 
   async create(params: {
+    id?: string;
     userId?: string;
     title?: string;
     metadata?: Record<string, unknown>;
   }): Promise<ChatSession> {
-    const id = randomUUID();
+    const id = params.id ?? randomUUID();
     const title = params.title ?? 'New Chat';
     const metadata = params.metadata ? JSON.stringify(params.metadata) : null;
 

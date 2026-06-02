@@ -15,11 +15,14 @@ interface ChatDbConfig {
 }
 
 function readChatDbConfig(config: ConfigService): ChatDbConfig {
+  // Fall back to MARIADB_* when CHAT_DB_* is unset. An empty CHAT_DB_PASSWORD
+  // makes MariaDB offer auth_gssapi_client, which the Node driver does not support.
   return {
-    host: config.get<string>('CHAT_DB_HOST', 'localhost'),
-    port: config.get<number>('CHAT_DB_PORT', 3306),
-    user: config.get<string>('CHAT_DB_USER', 'root'),
-    password: config.get<string>('CHAT_DB_PASSWORD', ''),
+    host: config.get<string>('CHAT_DB_HOST') ?? config.get<string>('MARIADB_HOST', 'localhost'),
+    port: config.get<number>('CHAT_DB_PORT') ?? config.get<number>('MARIADB_PORT', 3306),
+    user: config.get<string>('CHAT_DB_USER') ?? config.get<string>('MARIADB_USER', 'root'),
+    password:
+      config.get<string>('CHAT_DB_PASSWORD') ?? config.get<string>('MARIADB_PASSWORD', ''),
     database: config.get<string>('CHAT_DB_NAME', 'minds_chat'),
     connectionLimit: config.get<number>('CHAT_DB_CONNECTION_LIMIT', 10),
   };

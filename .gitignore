@@ -3,3 +3,6 @@
 !.env.example
 node_modules/
 dist/
+
+# Claude Code generated diff artifacts
+**/.claude/codediff.txt

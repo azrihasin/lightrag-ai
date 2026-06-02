@@ -20,6 +20,6 @@ import { ChatHistoryController } from './chat-history.controller';
     MessageRepository,
     ChatHistoryService,
   ],
-  exports: [ChatHistoryService],
+  exports: [ChatHistoryService, CHAT_DB_POOL],
 })
 export class ChatHistoryModule {}

@@ -18,7 +18,14 @@ import {
   useJsonRenderMessage,
 } from "@json-render/react";
 import { StreamdownText } from "@/components/assistant-ui/streamdown-text";
+import { Reasoning } from "@/components/assistant-ui/reasoning";
+import { Sources } from "@/components/assistant-ui/sources";
+import { splitReasoningText, extractSources, extractCodeBlock } from "@/lib/reasoning-format";
+import { CodeBlock } from "@/components/assistant-ui/code-block";
+import { Badge } from "@/components/ui/badge";
+import { DatabaseIcon } from "lucide-react";
 import { ToolFallback } from "@/components/assistant-ui/tool-fallback";
+import type { ReasoningMessagePartComponent } from "@assistant-ui/react";
 import { getAgentForTool } from "@/lib/tool-agent-map";
 import type { ToolCallMessagePartComponent } from "@assistant-ui/react";
 import {
@@ -51,12 +58,15 @@ import {
   ComposeResponseUI,
 } from "@/components/agent-tool-uis";
 import { registry } from "@/lib/registry";
+import { SqlResultsTable } from "@/components/sql-results-table";
+import { SqlRerunCard } from "@/components/sql-rerun-card";
 import { createStreamingFetch } from "@/lib/streaming-fetch";
 import {
   ChatHistoryThreadListAdapter,
   createBackendHistoryAdapter,
 } from "@/lib/chat-thread-adapter";
-import { useMemo, useRef, type FC } from "react";
+import { getResourceId } from "@/lib/resource-id";
+import { useMemo, useRef, useEffect, type FC } from "react";
 
 // ─── Fallback for unrecognised tools ─────────────────────────────────────────
 
@@ -101,11 +111,90 @@ const toolsByName = {
 
 const NoOp = () => null;
 
+// Renders a reasoning block as a natural activity-feed item. The backend streams
+// the wording (active-progress title while running, past-tense outcome title +
+// body once complete); we show the latest heading as the title. See
+// lib/reasoning-format.ts.
+const GhostReasoning: ReasoningMessagePartComponent = ({ text, status }) => {
+  const active = status.type === "running";
+  const { title, body } = useMemo(() => splitReasoningText(text), [text]);
+  // The retrieve-context block carries the raw LightRAG schema JSON as a fenced
+  // ```json block — lift it out so it renders as a codeblock (and so its commas
+  // don't pollute the source-table list below).
+  const codeBlock = useMemo(() => extractCodeBlock(body), [body]);
+  const proseBody = codeBlock ? codeBlock.rest : body;
+  // Retrieve-context blocks list the relevant source tables — render those as
+  // badges (all of them) instead of a truncated comma-joined sentence.
+  const sources = useMemo(() => extractSources(proseBody), [proseBody]);
+
+  return (
+    <Reasoning.Root variant="ghost" defaultOpen>
+      <Reasoning.Trigger active={active} label={title || (active ? "Working…" : "Done")} />
+      {(proseBody || codeBlock) && (
+        <Reasoning.Content>
+          <div className="flex flex-col gap-2">
+            {sources ? (
+              <>
+                {sources.lead && <Reasoning.Text>{sources.lead}</Reasoning.Text>}
+                <div className="flex flex-wrap gap-1.5">
+                  {sources.sources.map((source) => (
+                    <Badge key={source} variant="secondary" className="gap-1.5 font-mono">
+                      <DatabaseIcon className="size-3 shrink-0" />
+                      {source}
+                    </Badge>
+                  ))}
+                </div>
+              </>
+            ) : (
+              proseBody && <Reasoning.Text>{proseBody}</Reasoning.Text>
+            )}
+            {codeBlock && (
+              <CodeBlock
+                label="LightRAG Schema"
+                code={codeBlock.code}
+                meta={codeBlock.lang}
+                bodyClassName="max-h-72"
+              />
+            )}
+          </div>
+        </Reasoning.Content>
+      )}
+    </Reasoning.Root>
+  );
+};
+
 // ─── Assistant message ────────────────────────────────────────────────────────
+
+interface SqlTableMeta {
+  runId: string;
+  columns: string[];
+  rowCount: number;
+  executionMs?: number;
+}
+
+interface RerunMeta {
+  messageId: string;
+  sql: string;
+  columns: string[];
+  rowCount: number | null;
+}
 
 const ChatAssistantMessage: FC = () => {
   const parts = useAuiState((s) => s.message.parts);
+  const threadId = useAuiState((s) => s.threadListItem.externalId);
   const hasToolParts = parts.some((p) => p.type === "tool-call");
+
+  const sqlTableMeta = useMemo((): SqlTableMeta | undefined => {
+    const part = parts.find((p) => p.type === "data" && (p as any).name === "sql-table");
+    return part ? (part as any).data as SqlTableMeta : undefined;
+  }, [parts]);
+
+  // History-loaded turns that ran a query carry a "rerun" data part instead of
+  // the (unpersisted) table + chart. Render a card that re-executes on demand.
+  const rerunMeta = useMemo((): RerunMeta | undefined => {
+    const part = parts.find((p) => p.type === "data" && (p as any).name === "rerun");
+    return part ? ((part as any).data as RerunMeta) : undefined;
+  }, [parts]);
 
   const jsonRenderParts = useMemo(
     (): DataPart[] =>
@@ -138,6 +227,7 @@ const ChatAssistantMessage: FC = () => {
             <MessagePrimitive.Parts
               components={{
                 Text: NoOp,
+                Reasoning: NoOp,
                 tools: { by_name: toolsByName, Fallback: ToolFallbackWithAgent },
               }}
             />
@@ -147,9 +237,30 @@ const ChatAssistantMessage: FC = () => {
         <MessagePrimitive.Parts
           components={{
             Text: StreamdownText,
+            Reasoning: GhostReasoning,
+            Source: Sources,
             tools: { Fallback: NoOp },
           }}
         />
+
+        {sqlTableMeta && (
+          <SqlResultsTable
+            runId={sqlTableMeta.runId}
+            columns={sqlTableMeta.columns}
+            rowCount={sqlTableMeta.rowCount}
+            executionMs={sqlTableMeta.executionMs}
+          />
+        )}
+
+        {rerunMeta && threadId && (
+          <SqlRerunCard
+            threadId={threadId}
+            messageId={rerunMeta.messageId}
+            sql={rerunMeta.sql}
+            columns={rerunMeta.columns}
+            rowCount={rerunMeta.rowCount}
+          />
+        )}
 
         {hasSpec && spec && <Renderer spec={spec} registry={registry} />}
         <MessageError />
@@ -164,8 +275,8 @@ const ChatAssistantMessage: FC = () => {
 };
 
 // ─── Per-thread runtime hook ──────────────────────────────────────────────────
-// Called once per active thread. Reads the thread's externalId (backend session
-// ID) and creates a chat runtime with history loading for that session.
+// Called once per active thread. Creates a chat runtime with Mastra's
+// resourceId + threadId lifecycle: the externalId IS the Mastra threadId.
 
 function ChatRuntimeHook() {
   const fetchRef = useRef(createStreamingFetch());
@@ -175,19 +286,56 @@ function ChatRuntimeHook() {
     [externalId],
   );
 
+  // Add resourceId + the real thread UUID to every chat request body. The AI SDK
+  // transport otherwise sends its own chat id ("DEFAULT_THREAD_ID"), which would
+  // collapse every conversation into a single Mastra thread. externalId IS the
+  // Mastra threadId the history adapter later reads back, so write/read keys match.
+  const resourceId = getResourceId();
+
   return useChatRuntime({
-    transport: new AssistantChatTransport({ api: API_URL, fetch: fetchRef.current }),
+    transport: new AssistantChatTransport({
+      api: API_URL,
+      fetch: fetchRef.current,
+      body: { resourceId, threadId: externalId },
+    }),
     adapters: { history: historyAdapter },
   });
 }
 
+// ─── Thread URL sync ──────────────────────────────────────────────────────────
+// Keeps ?thread=<id> in the URL in sync with the active thread.
+// Must be rendered inside AssistantRuntimeProvider.
+
+const ThreadUrlSync: FC = () => {
+  const externalId = useAuiState((s) => s.threadListItem.externalId);
+
+  useEffect(() => {
+    if (!externalId) return;
+    const url = new URL(window.location.href);
+    url.searchParams.set("thread", externalId);
+    window.history.replaceState(null, "", url.toString());
+  }, [externalId]);
+
+  return null;
+};
+
 // ─── Chat area ────────────────────────────────────────────────────────────────
 
 const ChatArea: FC = () => {
+  // Restore the thread from ?thread=<id> on load. assistant-ui switches the
+  // active thread to it (via adapter.fetch), so a refresh continues the same
+  // conversation instead of opening an empty draft. Captured once at mount.
+  const initialThreadId = useMemo(
+    () => new URLSearchParams(window.location.search).get("thread") ?? undefined,
+    [],
+  );
+
   const runtime = useRemoteThreadListRuntime({
     runtimeHook: ChatRuntimeHook,
     adapter: backendAdapter,
+    initialThreadId,
   });
+
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
@@ -202,6 +350,7 @@ const ChatArea: FC = () => {
             <ValidationProvider customFunctions={{}}>
               <div className="flex h-full w-full flex-col">
                 <div className="flex flex-1 min-h-0">
+                  <ThreadUrlSync />
                   <Shadcn assistantMessage={ChatAssistantMessage} />
                 </div>
               </div>
