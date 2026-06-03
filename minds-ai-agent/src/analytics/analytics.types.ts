@@ -69,6 +69,23 @@ export type WorkflowOutput = {
 };
 
 /**
+ * Token + timing accounting for a single LightRAG `/query/stream` call. The
+ * endpoint returns no usage figures, so both token counts are computed with
+ * `gpt-tokenizer` over the text we send / receive. Surfaced in the
+ * retrieve_context reasoning block as a message-timing-style badge.
+ */
+export type LightragMetrics = {
+  /** Estimated tokens of the request sent to LightRAG (query + schema prompt). */
+  inputTokens: number;
+  /** Estimated tokens of the response streamed back from LightRAG. */
+  outputTokens: number;
+  /** Time to first response chunk, in ms; undefined when nothing streamed back. */
+  ttftMs?: number;
+  /** Total wall-clock duration of the LightRAG call, in ms. */
+  durationMs: number;
+};
+
+/**
  * A json-render visualization payload the frontend can render directly:
  * `componentType` is a catalog component key and `props` satisfy that
  * component's schema (chart components embed `data` inline).
@@ -109,6 +126,23 @@ export interface AnalyticsRunContext {
   retrievedContext?: string;
   /** References (source files) cited by the LightRAG retrieval. */
   contextReferences?: Array<{ path?: string; title?: string; score?: number }>;
+  /**
+   * Estimated input/output token counts and timing for the LightRAG retrieval,
+   * set by the retrieve_context tool. Rendered in that step's reasoning block as
+   * a message-timing-style badge.
+   */
+  lightragMetrics?: LightragMetrics;
+  /**
+   * Live sink for the LightRAG `/query/stream` response, set ONLY on the chat
+   * agent path. The retrieve_context tool calls {@link onLightragChunk} with each
+   * streamed chunk of the endpoint's raw response and {@link onLightragEnd} once
+   * the stream finishes, so the chat service can build the response live in the
+   * reasoning block as a fenced code block. Left unset on the workflow path
+   * (which has no live reasoning UI) — the tool then just accumulates the full
+   * response into {@link retrievedContext} as before.
+   */
+  onLightragChunk?: (delta: string) => void;
+  onLightragEnd?: () => void;
 }
 
 export const ANALYTICS_RUN_KEY = 'analyticsRun';

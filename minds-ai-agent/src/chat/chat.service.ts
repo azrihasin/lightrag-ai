@@ -389,6 +389,13 @@ export class ChatService {
     // The most recent unresolved failure. While set, each following step is
     // worded as a recovery (a bridge) and a successful execute_sql clears it.
     let recovery: RecoveryContext | null = null;
+    // LightRAG live-stream state. As the retrieve_context tool streams the raw
+    // endpoint response, we open a ```json fence inside its reasoning block and
+    // append each chunk. `lightragStreamed` records that this happened so the
+    // block's close step does NOT re-emit the fence to the live UI (it is already
+    // there); the persisted copy still carries it for history reload.
+    let lightragFenceOpen = false;
+    let lightragStreamed = false;
     let finalText = '';
     // Authoritative final answer, read from the master agent's aggregate output
     // after the stream completes. Used only as a fallback for the reconstructed
@@ -410,6 +417,28 @@ export class ChatService {
 
     try {
       const agent = this.analyticsAgentService.getAgent();
+
+      // Live sink: the retrieve_context tool streams the raw LightRAG response
+      // here chunk-by-chunk. We append each chunk into a ```json fence inside the
+      // step's open reasoning block so the user watches the endpoint response
+      // build live, then close the fence when the stream ends.
+      run.onLightragChunk = (delta: string) => {
+        const id = openBlocks.get('retrieve_context');
+        if (!id) return; // block not open yet — fall back to the close-step fence
+        lightragStreamed = true;
+        let out = delta;
+        if (!lightragFenceOpen) {
+          lightragFenceOpen = true;
+          out = `\n\n\`\`\`json\n${delta}`;
+        }
+        writer.write({ type: 'reasoning-delta', id, delta: out });
+      };
+      run.onLightragEnd = () => {
+        if (!lightragFenceOpen) return;
+        const id = openBlocks.get('retrieve_context');
+        if (id) writer.write({ type: 'reasoning-delta', id, delta: '\n```' });
+        lightragFenceOpen = false;
+      };
 
       // Run the whole stream consumption inside the blackboard context so every
       // subagent tool invocation shares this run's AnalyticsRunContext.
@@ -449,7 +478,7 @@ export class ChatService {
               recovery,
             });
             recovery = this.nextRecovery(recovery, resolveStepKey(key), display);
-            this.closeReasoning(writer, key, display, openBlocks, reasoningParts, run);
+            this.closeReasoning(writer, key, display, openBlocks, reasoningParts, run, lightragStreamed);
             this.emitTableSources(writer, key, run, emittedTables, tableNames);
             continue;
           }
@@ -534,10 +563,17 @@ export class ChatService {
           recovery,
         });
         recovery = this.nextRecovery(recovery, resolveStepKey(key), display);
-        const md = renderReasoningMarkdown(display) + this.retrievedContextBlock(key, run);
-        writer.write({ type: 'reasoning-delta', id, delta: `\n\n${md}` });
+        const metricsMd = this.lightragMetricsComment(key, run);
+        const persistMd = renderReasoningMarkdown(display) + this.retrievedContextBlock(key, run) + metricsMd;
+        // Skip re-emitting the fence to the live UI when it was already streamed
+        // in (see closeReasoning); the persisted copy keeps it for reload.
+        const liveMd =
+          lightragStreamed && resolveStepKey(key) === 'retrieve_context'
+            ? renderReasoningMarkdown(display) + metricsMd
+            : persistMd;
+        writer.write({ type: 'reasoning-delta', id, delta: `\n\n${liveMd}` });
         writer.write({ type: 'reasoning-end', id });
-        reasoningParts.push({ key, text: md });
+        reasoningParts.push({ key, text: persistMd });
         this.emitTableSources(writer, key, run, emittedTables, tableNames);
       }
 
@@ -642,15 +678,28 @@ export class ChatService {
     openBlocks: Map<string, string>,
     reasoningParts: Array<{ key: string; text: string }>,
     run: AnalyticsRunContext,
+    lightragStreamed: boolean,
   ): void {
     if (!openBlocks.has(key)) this.openReasoning(writer, key, openBlocks, null);
     const id = openBlocks.get(key) ?? `reasoning-${key}`;
-    // Append the raw LightRAG JSON (retrieve_context only) so the UI can render
-    // it as a codeblock; persisted with the block so history reloads show it too.
-    const md = renderReasoningMarkdown(display) + this.retrievedContextBlock(key, run);
-    writer.write({ type: 'reasoning-delta', id, delta: `\n\n${md}` });
+    // Invisible token/timing metrics carried in both the live and persisted copy
+    // (retrieve_context only) so the message-timing badge renders during the
+    // stream and again on history reload.
+    const metricsMd = this.lightragMetricsComment(key, run);
+    // The persisted copy always carries the raw LightRAG JSON (retrieve_context
+    // only) as a fenced codeblock so a history reload renders it.
+    const persistMd = renderReasoningMarkdown(display) + this.retrievedContextBlock(key, run) + metricsMd;
+    // When the response was already streamed live into this block as a codeblock,
+    // the live UI only needs the outcome heading + body now — re-emitting the
+    // fence would duplicate it. The frontend lifts the codeblock out of the full
+    // block text, so its position (streamed earlier vs. appended) does not matter.
+    const liveMd =
+      lightragStreamed && resolveStepKey(key) === 'retrieve_context'
+        ? renderReasoningMarkdown(display) + metricsMd
+        : persistMd;
+    writer.write({ type: 'reasoning-delta', id, delta: `\n\n${liveMd}` });
     writer.write({ type: 'reasoning-end', id });
-    reasoningParts.push({ key, text: md });
+    reasoningParts.push({ key, text: persistMd });
     openBlocks.delete(key);
   }
 
@@ -701,6 +750,20 @@ export class ChatService {
       // Not JSON — show the raw retrieved text as-is.
     }
     return `\n\n\`\`\`json\n${body}\n\`\`\``;
+  }
+
+  /**
+   * Encode the LightRAG token/timing metrics (retrieve_context only) as an
+   * invisible HTML comment appended to the reasoning block. ReactMarkdown ignores
+   * it; the frontend parses the comment out and renders a message-timing-style
+   * badge showing the input/output token estimate and call timing. Returns '' for
+   * other steps or when no metrics were recorded.
+   */
+  private lightragMetricsComment(key: string, run: AnalyticsRunContext): string {
+    if (resolveStepKey(key) !== 'retrieve_context') return '';
+    const metrics = run.lightragMetrics;
+    if (!metrics) return '';
+    return `\n\n<!--lightrag-timing:${JSON.stringify(metrics)}-->`;
   }
 
   /**

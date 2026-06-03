@@ -85,7 +85,6 @@ export class ChatController {
     }
 
     const dto: ChatRequestDto = parsed.data;
-    if (dto.provider) process.env.AI_PROVIDER = dto.provider;
     if (dto.model) process.env.AI_MODEL = dto.model;
 
     await this.chatService.stream(dto, res);
@@ -108,7 +107,6 @@ export class ChatController {
     }
 
     const dto: ChatRequestDto = parsed.data;
-    if (dto.provider) process.env.AI_PROVIDER = dto.provider;
     if (dto.model) process.env.AI_MODEL = dto.model;
 
     await this.chatService.analyticsStream(dto, res);

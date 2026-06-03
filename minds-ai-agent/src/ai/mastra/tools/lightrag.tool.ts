@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectPinoLogger, PinoLogger } from 'nestjs-pino';
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
+import { encode } from 'gpt-tokenizer';
 import { currentRun } from '../../../analytics/analytics-run.store';
 
 /**
@@ -20,6 +21,21 @@ const SCHEMA_USER_PROMPT =
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_TOP_K = 4;
+
+/**
+ * Token count via `gpt-tokenizer` (pure-JS BPE, cl100k_base). LightRAG's
+ * `/query/stream` endpoint returns no usage figures, so we tokenize the input
+ * (the query + schema prompt we send) and the output (the streamed response)
+ * ourselves. Falls back to the ~4-chars/token heuristic if encoding ever throws.
+ */
+function countTokens(text: string): number {
+  if (!text) return 0;
+  try {
+    return encode(text).length;
+  } catch {
+    return Math.ceil(text.length / 4);
+  }
+}
 // Max tokens of graph context assembled before being sent to LightRAG's LLM.
 // Keeping this low is the primary lever for reducing input token cost while
 // still using the knowledge graph and LLM generation step.
@@ -83,11 +99,24 @@ export class LightragHarnessTool {
           ? AbortSignal.any([userSignal, timeoutSignal])
           : timeoutSignal;
 
+        // Stream the response so its raw text builds live in the reasoning block.
+        // When the chat agent path set a live sink on the blackboard, each chunk
+        // is forwarded to it as it arrives; otherwise we just accumulate the full
+        // response (the workflow path has no live reasoning UI).
+        const run = currentRun();
+        const sink = run?.onLightragChunk;
+
+        // Token + timing accounting. The input we send to LightRAG is the query
+        // plus the schema-formatter prompt; the output is whatever streams back.
+        // LightRAG reports no usage, so both are tokenized client-side.
+        const inputTokens = countTokens(`${input.query}\n${SCHEMA_USER_PROMPT}`);
+        const startedAt = Date.now();
+
         try {
           // GUARDRAIL: only_need_context is intentionally FALSE so LightRAG's
           // generation step runs and formats the retrieved context into a compact
           // JSON schema whitelist (exact names only) via SCHEMA_USER_PROMPT.
-          const res = await fetch(`${LIGHTRAG_URL}/query`, {
+          const res = await fetch(`${LIGHTRAG_URL}/query/stream`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -100,25 +129,34 @@ export class LightragHarnessTool {
               max_token_for_text_unit: MAX_TEXT_UNIT_TOKENS,
               top_k: topK,
               user_prompt: SCHEMA_USER_PROMPT,
-              stream: false,
+              stream: true,
             }),
             signal,
           });
 
-          if (!res.ok) {
+          if (!res.ok || !res.body) {
             this.logger.warn({ status: res.status }, 'LightRAG non-OK response');
             return this.emptySchema(input.query);
           }
 
-          const body = (await res.json()) as { response?: string };
-          const schemaJson = (body.response ?? '').trim() || '{"tables":[]}';
+          // /query/stream emits NDJSON lines: { response: "<delta>" } generation
+          // chunks plus an optional { references: [...] } line. Concatenating the
+          // response deltas yields the same compact JSON schema string the
+          // non-streaming endpoint returned.
+          const { response, references, firstChunkAt } = await this.consumeStream(res.body, sink);
+          const schemaJson = response.trim() || '{"tables":[]}';
 
           // Record the schema on the run blackboard so the SQL agent and the
           // grounding guard see exactly this whitelist as the allowed schema.
-          const run = currentRun();
           if (run) {
             run.retrievedContext = schemaJson;
-            run.contextReferences = [];
+            run.contextReferences = references;
+            run.lightragMetrics = {
+              inputTokens,
+              outputTokens: countTokens(response),
+              ttftMs: firstChunkAt ? firstChunkAt - startedAt : undefined,
+              durationMs: Date.now() - startedAt,
+            };
           }
 
           return { query: input.query, schemaJson };
@@ -133,9 +171,76 @@ export class LightragHarnessTool {
           // can report insufficient context rather than crash.
           this.logger.error({ err }, 'LightRAG request failed');
           return this.emptySchema(input.query);
+        } finally {
+          // Close the live code-block fence (if one was opened), whether the
+          // stream completed, timed out, or failed — so the UI never gets stuck
+          // with an unterminated block.
+          run?.onLightragEnd?.();
         }
       },
     });
+  }
+
+  /**
+   * Consume LightRAG's `/query/stream` NDJSON body. Each newline-delimited line
+   * is a JSON object: `{ response }` carries a generation delta (appended to the
+   * accumulated text and forwarded to the live `sink` when present); a
+   * `{ references }` line carries the cited sources. Non-JSON or unrecognized
+   * lines are ignored. Returns the full concatenated response plus any references.
+   */
+  private async consumeStream(
+    body: ReadableStream<Uint8Array>,
+    sink?: (delta: string) => void,
+  ): Promise<{
+    response: string;
+    references: Array<{ path?: string; title?: string; score?: number }>;
+    /** Timestamp (ms) of the first response delta — used for TTFT; undefined if none. */
+    firstChunkAt?: number;
+  }> {
+    const reader = body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let response = '';
+    let firstChunkAt: number | undefined;
+    let references: Array<{ path?: string; title?: string; score?: number }> = [];
+
+    const handleLine = (line: string) => {
+      const trimmed = line.trim();
+      if (!trimmed) return;
+      let obj: { response?: unknown; references?: unknown };
+      try {
+        obj = JSON.parse(trimmed);
+      } catch {
+        return; // ignore keep-alive / non-JSON noise
+      }
+      if (typeof obj.response === 'string' && obj.response) {
+        if (firstChunkAt === undefined) firstChunkAt = Date.now();
+        response += obj.response;
+        sink?.(obj.response);
+      }
+      if (Array.isArray(obj.references)) {
+        references = obj.references as typeof references;
+      }
+    };
+
+    try {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let nl: number;
+        while ((nl = buffer.indexOf('\n')) !== -1) {
+          handleLine(buffer.slice(0, nl));
+          buffer = buffer.slice(nl + 1);
+        }
+      }
+      buffer += decoder.decode();
+      if (buffer) handleLine(buffer);
+    } finally {
+      reader.releaseLock();
+    }
+
+    return { response, references, firstChunkAt };
   }
 
   private resolveTimeout(): number {

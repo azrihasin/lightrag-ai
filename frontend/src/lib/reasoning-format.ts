@@ -50,6 +50,41 @@ export function splitReasoningText(text: string): ReasoningDisplay {
   return { title, body };
 }
 
+export interface LightragTiming {
+  /** Estimated tokens of the request sent to LightRAG (query + schema prompt). */
+  inputTokens: number;
+  /** Estimated tokens of the response streamed back from LightRAG. */
+  outputTokens: number;
+  /** Time to first response chunk, in ms; undefined when nothing streamed back. */
+  ttftMs?: number;
+  /** Total wall-clock duration of the LightRAG call, in ms. */
+  durationMs: number;
+}
+
+// The backend embeds LightRAG token/timing metrics in the retrieve-context block
+// as an invisible `<!--lightrag-timing:{…}-->` comment (see chat.service.ts).
+const LIGHTRAG_TIMING_RE = /<!--lightrag-timing:(\{[\s\S]*?\})-->/;
+
+/**
+ * Lift the LightRAG token/timing metrics out of a reasoning body. Returns the
+ * parsed metrics plus the body with the comment stripped, or null when the body
+ * carries no metrics. Call this first so the stripped `rest` flows through the
+ * code-block / title parsers without the comment polluting them.
+ */
+export function extractLightragTiming(
+  text: string,
+): { timing: LightragTiming; rest: string } | null {
+  const src = text ?? "";
+  const m = LIGHTRAG_TIMING_RE.exec(src);
+  if (!m) return null;
+  const rest = (src.slice(0, m.index) + src.slice(m.index + m[0].length)).trim();
+  try {
+    return { timing: JSON.parse(m[1]) as LightragTiming, rest };
+  } catch {
+    return null;
+  }
+}
+
 export interface ReasoningCodeBlock {
   /** Language tag after the opening fence (defaults to "json"). */
   lang: string;
@@ -67,11 +102,21 @@ export interface ReasoningCodeBlock {
  * Returns null when the body has no fence.
  */
 export function extractCodeBlock(body: string): ReasoningCodeBlock | null {
-  const fenceRe = /```(\w*)\n([\s\S]*?)```/;
-  const m = fenceRe.exec(body ?? "");
-  if (!m) return null;
-  const rest = (body.slice(0, m.index) + body.slice(m.index + m[0].length)).trim();
-  return { lang: m[1] || "json", code: m[2].trim(), rest };
+  const text = body ?? "";
+  const closed = /```(\w*)\n([\s\S]*?)```/.exec(text);
+  if (closed) {
+    const rest = (text.slice(0, closed.index) + text.slice(closed.index + closed[0].length)).trim();
+    return { lang: closed[1] || "json", code: closed[2].trim(), rest };
+  }
+  // While the LightRAG response is still streaming, the fence has no closing
+  // ``` yet — treat everything after the opening fence as the (growing) code so
+  // it renders as a codeblock live instead of as raw prose.
+  const open = /```(\w*)\n([\s\S]*)$/.exec(text);
+  if (open) {
+    const rest = text.slice(0, open.index).trim();
+    return { lang: open[1] || "json", code: open[2].trim(), rest };
+  }
+  return null;
 }
 
 export interface ReasoningSources {

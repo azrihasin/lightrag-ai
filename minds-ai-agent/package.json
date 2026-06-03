@@ -33,6 +33,7 @@
     "@types/jmespath": "^0.15.2",
     "ai": "^6.0.168",
     "drizzle-orm": "^0.45.2",
+    "gpt-tokenizer": "^3.4.0",
     "jmespath": "^0.16.0",
     "mariadb": "^3.5.2",
     "mysql2": "^3.22.3",

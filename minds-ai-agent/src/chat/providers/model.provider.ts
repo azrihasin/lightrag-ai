@@ -8,7 +8,11 @@ export class ModelProvider {
   private readonly baseURL: string;
 
   constructor() {
-    this.modelId = process.env.AI_MODEL ?? 'deepseek-chat';
+    const modelId = process.env.AI_MODEL;
+    if (!modelId) {
+      throw new Error('AI_MODEL environment variable is required (no default fallback)');
+    }
+    this.modelId = modelId;
     this.baseURL = process.env.LLM_BINDING_HOST ?? 'https://api.openai.com/v1';
     console.log(`ModelProvider ready: model=${this.modelId} baseURL=${this.baseURL}`);
   }

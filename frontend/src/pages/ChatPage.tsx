@@ -20,8 +20,9 @@ import {
 import { StreamdownText } from "@/components/assistant-ui/streamdown-text";
 import { Reasoning } from "@/components/assistant-ui/reasoning";
 import { Sources } from "@/components/assistant-ui/sources";
-import { splitReasoningText, extractSources, extractCodeBlock } from "@/lib/reasoning-format";
+import { splitReasoningText, extractSources, extractCodeBlock, extractLightragTiming } from "@/lib/reasoning-format";
 import { CodeBlock } from "@/components/assistant-ui/code-block";
+import { LightragTimingBadge } from "@/components/assistant-ui/lightrag-timing";
 import { Badge } from "@/components/ui/badge";
 import { DatabaseIcon } from "lucide-react";
 import { ToolFallback } from "@/components/assistant-ui/tool-fallback";
@@ -117,12 +118,22 @@ const NoOp = () => null;
 // lib/reasoning-format.ts.
 const GhostReasoning: ReasoningMessagePartComponent = ({ text, status }) => {
   const active = status.type === "running";
-  const { title, body } = useMemo(() => splitReasoningText(text), [text]);
-  // The retrieve-context block carries the raw LightRAG schema JSON as a fenced
-  // ```json block — lift it out so it renders as a codeblock (and so its commas
-  // don't pollute the source-table list below).
-  const codeBlock = useMemo(() => extractCodeBlock(body), [body]);
-  const proseBody = codeBlock ? codeBlock.rest : body;
+  // The retrieve-context block carries the estimated LightRAG token/timing
+  // metrics as an invisible comment — lift those out first so the comment never
+  // reaches the code-block / title parsers below, then work on the stripped text.
+  const timing = useMemo(() => extractLightragTiming(text), [text]);
+  const baseText = timing ? timing.rest : text;
+  // The retrieve-context block carries the raw LightRAG response as a fenced
+  // ```json block — streamed live as it arrives and possibly sitting BEFORE the
+  // final outcome heading. Lift it out of the full block text first (so it
+  // survives the running→outcome heading flip and its commas don't pollute the
+  // source-table list), then derive the title/body from what's left.
+  const codeBlock = useMemo(() => extractCodeBlock(baseText), [baseText]);
+  const { title, body } = useMemo(
+    () => splitReasoningText(codeBlock ? codeBlock.rest : baseText),
+    [codeBlock, baseText],
+  );
+  const proseBody = body;
   // Retrieve-context blocks list the relevant source tables — render those as
   // badges (all of them) instead of a truncated comma-joined sentence.
   const sources = useMemo(() => extractSources(proseBody), [proseBody]);
@@ -130,7 +141,7 @@ const GhostReasoning: ReasoningMessagePartComponent = ({ text, status }) => {
   return (
     <Reasoning.Root variant="ghost" defaultOpen>
       <Reasoning.Trigger active={active} label={title || (active ? "Working…" : "Done")} />
-      {(proseBody || codeBlock) && (
+      {(proseBody || codeBlock || timing) && (
         <Reasoning.Content>
           <div className="flex flex-col gap-2">
             {sources ? (
@@ -155,6 +166,11 @@ const GhostReasoning: ReasoningMessagePartComponent = ({ text, status }) => {
                 meta={codeBlock.lang}
                 bodyClassName="max-h-72"
               />
+            )}
+            {timing && (
+              <div className="flex">
+                <LightragTimingBadge timing={timing.timing} />
+              </div>
             )}
           </div>
         </Reasoning.Content>
