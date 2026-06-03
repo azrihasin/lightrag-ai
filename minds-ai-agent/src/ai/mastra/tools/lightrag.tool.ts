@@ -9,17 +9,22 @@ import { currentRun } from '../../../analytics/analytics-run.store';
  * uses this prompt to turn the retrieved context into a constrained JSON schema
  * whitelist (exact table/column names only) — never prose, SQL, or explanations.
  */
+// Kept deliberately short: every token here is paid on every LightRAG call.
+// The only job is to make the LLM emit compact JSON and nothing else.
 const SCHEMA_USER_PROMPT =
-  "You are a strict database schema retrieval formatter. Your only task is to return the complete relevant database schema needed to answer the user's query as accurately as possible, using only exact table names and exact column names that are explicitly present in the retrieved LightRAG context. Do not minimize too aggressively; include every table and column that may be needed for accurate SQL generation, including columns needed for joins, filters, grouping, aggregation, ordering, time conditions, status conditions, identifiers, labels, dimensions, and metrics implied by the user's request. Do not infer, rename, normalize, singularize, pluralize, translate, correct spelling, change casing, add prefixes, remove prefixes, or invent any database name, schema name, table name, column name, key, or relationship. If a table or column is only semantically implied but not explicitly shown in the retrieved context, exclude it. If a generic entity or column name appears without a clearly attached table, do not treat it as usable unless the context explicitly maps that column to that table. Return only valid compact JSON and nothing else. Do not include markdown, prose, explanations, summaries, confidence scores, SQL, comments, or reasoning. The JSON shape must be exactly {\"tables\":[{\"table\":\"exact_table_name\",\"columns\":[\"exact_column_name_1\",\"exact_column_name_2\"]}]}. The \"table\" value must be an exact table name only — never a database name, schema name, or qualifier on its own; if a table appears qualified in the context (e.g. schema.table), keep the table identifier exactly as shown but do not emit a bare schema/database name as a table. Include all relevant and useful tables and columns that are supported by the retrieved context and could improve SQL accuracy. Include bridge, lookup, dimension, fact, mapping, backup, or relationship tables when they may be required for joins, filters, grouping, aggregation, labels, or time conditions in the user's query. Preserve exact spelling and casing from the retrieved context. If the retrieved context is insufficient to identify at least one exact table and exact relevant column, return exactly {\"tables\":[]}.";
+  'Output ONLY this JSON, no prose, no markdown, no reasoning: ' +
+  '{"tables":[{"table":"exact_table_name","columns":["col1","col2"]}]}. ' +
+  'Use only table and column names that appear verbatim in the retrieved context. ' +
+  'Do not rename, infer, or invent any identifier. ' +
+  'If context is insufficient return {"tables":[]}.';
 
 const DEFAULT_TIMEOUT_MS = 30_000;
-// Breadth of entities/relations LightRAG retrieves before formatting. This is a
-// HARD CEILING, not just a default: a larger top_k means LightRAG pulls (and the
-// downstream LLM formats) more context, which costs more per call. The master
-// agent retries retrieve_context on failure, so an ever-growing top_k would
-// multiply cost on every retry. We therefore clamp every request to this value —
-// retries re-run at the same breadth instead of escalating it.
-const DEFAULT_TOP_K = 6;
+const DEFAULT_TOP_K = 4;
+// Max tokens of graph context assembled before being sent to LightRAG's LLM.
+// Keeping this low is the primary lever for reducing input token cost while
+// still using the knowledge graph and LLM generation step.
+const MAX_LOCAL_CONTEXT_TOKENS = 2000;
+const MAX_TEXT_UNIT_TOKENS = 512;
 
 @Injectable()
 export class LightragHarnessTool {
@@ -47,9 +52,8 @@ export class LightragHarnessTool {
           .max(DEFAULT_TOP_K)
           .optional()
           .describe(
-            `Entities/relations to retrieve; defaults to ${DEFAULT_TOP_K} when omitted. ` +
-              `This is capped at ${DEFAULT_TOP_K} — do NOT raise it when retrying a failed ` +
-              `retrieval, as a larger value does not improve grounding and only increases cost.`,
+            `Entities/relations to retrieve from the knowledge graph; defaults to ${DEFAULT_TOP_K}. ` +
+              `Capped at ${DEFAULT_TOP_K} — do NOT raise it on retry, it only increases cost.`,
           ),
       }),
       outputSchema: z.object({
@@ -90,8 +94,10 @@ export class LightragHarnessTool {
               query: input.query,
               mode: input.mode ?? 'local',
               only_need_context: false,
-              enable_rerank: true,
-              include_references: false,
+              // Cap how many tokens of graph context are assembled before being
+              // sent to LightRAG's LLM — the primary lever for input token cost.
+              max_token_for_local_context: MAX_LOCAL_CONTEXT_TOKENS,
+              max_token_for_text_unit: MAX_TEXT_UNIT_TOKENS,
               top_k: topK,
               user_prompt: SCHEMA_USER_PROMPT,
               stream: false,

@@ -17,10 +17,11 @@ function safeStringify(value: unknown): string | null {
 
 @Injectable()
 export class MessageRepository {
-  constructor(@Inject(CHAT_DB_POOL) private readonly pool: ChatPool) {}
+  constructor(@Inject(CHAT_DB_POOL) private readonly pool: ChatPool | null) {}
 
   async nextSequenceIndex(sessionId: string, conn?: PoolConnection): Promise<number> {
-    const runner = conn ?? this.pool;
+    if (!this.pool && !conn) return 0;
+    const runner = conn ?? this.pool!;
     const rows = await runner.query<{ max_seq: number | null }[]>(
       `SELECT MAX(sequence_index) AS max_seq FROM chat_messages WHERE session_id = ?`,
       [sessionId],
@@ -30,7 +31,7 @@ export class MessageRepository {
   }
 
   async insertMany(sessionId: string, messages: NewMessage[]): Promise<void> {
-    if (messages.length === 0) return;
+    if (messages.length === 0 || !this.pool) return;
 
     const conn = await this.pool.getConnection();
     try {
@@ -83,6 +84,7 @@ export class MessageRepository {
   }
 
   async countForSession(sessionId: string): Promise<number> {
+    if (!this.pool) return 0;
     const rows = await this.pool.query<{ cnt: number }[]>(
       `SELECT COUNT(*) AS cnt FROM chat_messages WHERE session_id = ?`,
       [sessionId],

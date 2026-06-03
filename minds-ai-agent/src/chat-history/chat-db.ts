@@ -58,3 +58,14 @@ export async function createChatDbPool(config: ConfigService): Promise<ChatPool>
     bigIntAsNumber: true,
   });
 }
+
+export async function createChatDbPoolSafe(config: ConfigService): Promise<ChatPool | null> {
+  try {
+    return await createChatDbPool(config);
+  } catch (err) {
+    console.warn(
+      `[ChatDB] MariaDB unavailable — chat history disabled. Reason: ${(err as Error).message}`,
+    );
+    return null;
+  }
+}

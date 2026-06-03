@@ -34,7 +34,11 @@ function mapRow(row: Record<string, unknown>): ChatSession {
 
 @Injectable()
 export class SessionRepository {
-  constructor(@Inject(CHAT_DB_POOL) private readonly pool: ChatPool) {}
+  constructor(@Inject(CHAT_DB_POOL) private readonly pool: ChatPool | null) {}
+
+  get available(): boolean {
+    return this.pool !== null;
+  }
 
   async create(params: {
     id?: string;
@@ -44,6 +48,12 @@ export class SessionRepository {
   }): Promise<ChatSession> {
     const id = params.id ?? randomUUID();
     const title = params.title ?? 'New Chat';
+    const now = new Date();
+
+    if (!this.pool) {
+      return { id, user_id: params.userId ?? null, title, created_at: now, updated_at: now, archived_at: null, metadata: params.metadata ?? null };
+    }
+
     const metadata = params.metadata ? JSON.stringify(params.metadata) : null;
 
     await this.pool.query(
@@ -59,6 +69,7 @@ export class SessionRepository {
   }
 
   async list(opts: ListSessionsOptions = {}): Promise<ChatSession[]> {
+    if (!this.pool) return [];
     const { userId, limit = 50, offset = 0, includeArchived = false } = opts;
 
     const conditions: string[] = [];
@@ -83,6 +94,7 @@ export class SessionRepository {
   }
 
   async findById(id: string): Promise<ChatSession | null> {
+    if (!this.pool) return null;
     const rows = await this.pool.query<Record<string, unknown>[]>(
       `SELECT * FROM chat_sessions WHERE id = ?`,
       [id],
@@ -91,6 +103,7 @@ export class SessionRepository {
   }
 
   async findWithMessages(id: string): Promise<SessionWithMessages | null> {
+    if (!this.pool) return null;
     const session = await this.findById(id);
     if (!session) return null;
 
@@ -121,6 +134,7 @@ export class SessionRepository {
   }
 
   async update(id: string, patch: { title?: string; metadata?: Record<string, unknown> }): Promise<void> {
+    if (!this.pool) return;
     const fields: string[] = [];
     const params: unknown[] = [];
 
@@ -143,6 +157,7 @@ export class SessionRepository {
   }
 
   async archive(id: string): Promise<void> {
+    if (!this.pool) return;
     await this.pool.query(
       `UPDATE chat_sessions SET archived_at = NOW(3) WHERE id = ? AND archived_at IS NULL`,
       [id],
@@ -150,6 +165,7 @@ export class SessionRepository {
   }
 
   async touchUpdatedAt(id: string): Promise<void> {
+    if (!this.pool) return;
     await this.pool.query(
       `UPDATE chat_sessions SET updated_at = NOW(3) WHERE id = ?`,
       [id],

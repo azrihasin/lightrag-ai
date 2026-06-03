@@ -50,10 +50,15 @@ CREATE TABLE IF NOT EXISTS chat_messages (
 export class SchemaSetupService implements OnModuleInit {
   constructor(
     @InjectPinoLogger(SchemaSetupService.name) private readonly logger: PinoLogger,
-    @Inject(CHAT_DB_POOL) private readonly pool: ChatPool,
+    @Inject(CHAT_DB_POOL) private readonly pool: ChatPool | null,
   ) {}
 
   async onModuleInit(): Promise<void> {
+    if (!this.pool) {
+      this.logger.warn('MariaDB unavailable — chat history schema setup skipped');
+      return;
+    }
+
     const statements = SCHEMA_DDL.split(';')
       .map((s) => s.trim())
       .filter((s) => s.length > 0);

@@ -6,8 +6,8 @@ export type { MemoryStorage };
 export function createMongoDBStore(): MongoDBStore {
   return new MongoDBStore({
     id: 'mongodb-storage-01',
-    uri: 'mongodb://localhost:27017',
-    dbName: 'minds',
+    uri: process.env.MONGODB_URI ?? 'mongodb://localhost:27017',
+    dbName: process.env.MONGODB_DB ?? 'minds-chat',
   });
 }
 
