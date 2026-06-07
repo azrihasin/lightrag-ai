@@ -6,6 +6,7 @@ import { AppService } from './app.service';
 import { ChatModule } from './chat/chat.module';
 import { ChatHistoryModule } from './chat-history/chat-history.module';
 import { DatabaseModule } from './database/database.module';
+import { LanceDbModule } from './lancedb/lancedb.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { DatabaseModule } from './database/database.module';
     }),
     ChatHistoryModule,
     ChatModule,
+    LanceDbModule,
   ],
   controllers: [AppController],
   providers: [AppService],

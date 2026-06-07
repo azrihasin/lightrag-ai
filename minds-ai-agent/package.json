@@ -21,6 +21,7 @@
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.71",
     "@ai-sdk/openai": "^3.0.53",
+    "@lancedb/lancedb": "^0.30.0",
     "@mastra/core": "^1.36.0",
     "@mastra/libsql": "^1.11.1",
     "@mastra/memory": "^1.19.0",
@@ -32,6 +33,7 @@
     "@nestjs/swagger": "^11.4.1",
     "@types/jmespath": "^0.15.2",
     "ai": "^6.0.168",
+    "apache-arrow": "^21.1.0",
     "drizzle-orm": "^0.45.2",
     "gpt-tokenizer": "^3.4.0",
     "jmespath": "^0.16.0",

@@ -47,6 +47,10 @@ lerna-debug.log*
 .temp
 .tmp
 
+# RAG / LanceDB storage data (generated, kept inside minds-ai-agent)
+/rag_storage
+/lancedb
+
 # Runtime data
 pids
 *.pid
