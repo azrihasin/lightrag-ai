@@ -1,0 +1,972 @@
+{
+  "doc-dbe2707459c71a833065363255b6056f": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-dbe2707459c71a833065363255b6056f"
+    ],
+    "content_summary": "src,rel,tgt,tgt_data_type\nminds.bin_bgs,HAS_COLUMN,cell_id,varchar\nminds.bin_bgs,HAS_COLUMN,cell_name,varchar\nminds.bin_bgs,HAS_COLUMN,date,datetime\nminds.bin_bgs,HAS_COLUMN,grid_id,int\nminds.bin_bgs,HAS_COLUMN,id,bigint\nminds.bin_bgs,HAS_COLUMN,lte_...",
+    "content_length": 1793,
+    "created_at": "2026-02-23T18:35:25.383469+00:00",
+    "updated_at": "2026-02-23T18:36:52.558777+00:00",
+    "file_path": "edges_part_001__minds.bin_bgs__minds.bin_bgs_daily.csv",
+    "track_id": "upload_20260224_023525_64e545e6",
+    "metadata": {
+      "processing_start_time": 1771871725,
+      "processing_end_time": 1771871812
+    }
+  },
+  "doc-b808c5262d610a63b1f5f97093d71e40": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-b808c5262d610a63b1f5f97093d71e40"
+    ],
+    "content_summary": "src,rel,tgt,tgt_data_type\nminds.binkpi,HAS_COLUMN,ActiveUser,int\nminds.binkpi,HAS_COLUMN,CellAvailability,int\nminds.binkpi,HAS_COLUMN,CellName,mediumtext\nminds.binkpi,HAS_COLUMN,CellStatus,varchar\nminds.binkpi,HAS_COLUMN,Congestion,varchar\nminds.bink...",
+    "content_length": 3029,
+    "created_at": "2026-02-24T18:01:00.755408+00:00",
+    "updated_at": "2026-02-24T18:03:01.180726+00:00",
+    "file_path": "edges_part_006__minds.binkpi__minds.binkpi_v1.csv",
+    "track_id": "upload_20260225_020100_2e64481d",
+    "metadata": {
+      "processing_start_time": 1771956061,
+      "processing_end_time": 1771956181
+    }
+  },
+  "doc-3b685ef4400a6fa468df65afe77ba5dc": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-3b685ef4400a6fa468df65afe77ba5dc"
+    ],
+    "content_summary": "src,rel,tgt,tgt_data_type\nminds.bin_ci,HAS_COLUMN,avg_download_mbps,double\nminds.bin_ci,HAS_COLUMN,avg_latency,double\nminds.bin_ci,HAS_COLUMN,avg_upload_mbps,double\nminds.bin_ci,HAS_COLUMN,date,date\nminds.bin_ci,HAS_COLUMN,grid_id,int\nminds.bin_ci,HA...",
+    "content_length": 1021,
+    "created_at": "2026-02-24T18:01:00.740896+00:00",
+    "updated_at": "2026-02-24T18:02:11.647609+00:00",
+    "file_path": "edges_part_005__minds.bin_ci__minds.bin_information.csv",
+    "track_id": "upload_20260225_020100_19fbe791",
+    "metadata": {
+      "processing_start_time": 1771956061,
+      "processing_end_time": 1771956131
+    }
+  },
+  "doc-374243573521599d3903e58897ae853e": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-374243573521599d3903e58897ae853e"
+    ],
+    "content_summary": "src,rel,tgt,tgt_data_type\nminds.bin_bgs_top_cell_monthly,HAS_COLUMN,Cell_Name,varchar\nminds.bin_bgs_top_cell_monthly,HAS_COLUMN,Site_ID,varchar\nminds.bin_bgs_top_cell_monthly,HAS_COLUMN,Vendor,longtext\nminds.bin_bgs_top_cell_monthly,HAS_COLUMN,cell_i...",
+    "content_length": 2991,
+    "created_at": "2026-02-24T18:01:00.696722+00:00",
+    "updated_at": "2026-02-24T18:04:22.313227+00:00",
+    "file_path": "edges_part_003__minds.bin_bgs_top_cell_monthly__minds.bin_bgs_top_cell_quarterly.csv",
+    "track_id": "upload_20260225_020100_46a0aa33",
+    "metadata": {
+      "processing_start_time": 1771956131,
+      "processing_end_time": 1771956262
+    }
+  },
+  "doc-c2c95696f9fb4fc3ea87d4cd246db2cf": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-c2c95696f9fb4fc3ea87d4cd246db2cf"
+    ],
+    "content_summary": "src,rel,tgt,tgt_data_type\nminds.binkpiadvisory,HAS_COLUMN,CellStatus,varchar\nminds.binkpiadvisory,HAS_COLUMN,ID,int\nminds.binkpiadvisory,HAS_COLUMN,Symptom,text\nminds.binkpiremark,HAS_COLUMN,Agree,tinyint\nminds.binkpiremark,HAS_COLUMN,CreatedDate,dat...",
+    "content_length": 423,
+    "created_at": "2026-02-24T18:01:00.865550+00:00",
+    "updated_at": "2026-02-24T18:03:56.991113+00:00",
+    "file_path": "edges_part_007__minds.binkpiadvisory__minds.binkpiremark.csv",
+    "track_id": "upload_20260225_020100_87dee4c5",
+    "metadata": {
+      "processing_start_time": 1771956181,
+      "processing_end_time": 1771956236
+    }
+  },
+  "doc-b57faecf215976d76a186d9b4092e8b1": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-b57faecf215976d76a186d9b4092e8b1"
+    ],
+    "content_summary": "src,rel,tgt,tgt_data_type\nminds.bin_bgs_top_cell_bi_monthly,HAS_COLUMN,Cell_Name,varchar\nminds.bin_bgs_top_cell_bi_monthly,HAS_COLUMN,Site_ID,varchar\nminds.bin_bgs_top_cell_bi_monthly,HAS_COLUMN,Vendor,longtext\nminds.bin_bgs_top_cell_bi_monthly,HAS_C...",
+    "content_length": 3116,
+    "created_at": "2026-02-24T18:01:00.524547+00:00",
+    "updated_at": "2026-02-24T18:06:20.334396+00:00",
+    "file_path": "edges_part_002__minds.bin_bgs_top_cell_bi_monthly__minds.bin_bgs_top_cell_half_yearly.csv",
+    "track_id": "upload_20260225_020100_578d8667",
+    "metadata": {
+      "processing_start_time": 1771956237,
+      "processing_end_time": 1771956380
+    }
+  },
+  "doc-13933e32ed4d5136fac446f5ebd080ef": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-13933e32ed4d5136fac446f5ebd080ef"
+    ],
+    "content_summary": "src,rel,tgt,tgt_data_type\nminds.bin_bgs_top_cell_weekly,HAS_COLUMN,Cell_Name,varchar\nminds.bin_bgs_top_cell_weekly,HAS_COLUMN,Site_ID,varchar\nminds.bin_bgs_top_cell_weekly,HAS_COLUMN,UPDATE_DATETIME,datetime\nminds.bin_bgs_top_cell_weekly,HAS_COLUMN,V...",
+    "content_length": 3266,
+    "created_at": "2026-02-24T18:01:00.732380+00:00",
+    "updated_at": "2026-02-24T18:07:01.568672+00:00",
+    "file_path": "edges_part_004__minds.bin_bgs_top_cell_weekly__minds.bin_bgs_top_cell_yearly.csv",
+    "track_id": "upload_20260225_020100_5e50e7e8",
+    "metadata": {
+      "processing_start_time": 1771956262,
+      "processing_end_time": 1771956421
+    }
+  },
+  "doc-3563ae527f38987dd7adbedabcf3b78d": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-3563ae527f38987dd7adbedabcf3b78d"
+    ],
+    "content_summary": "src,rel,tgt,tgt_data_type\nminds.cell2g_tmp,HAS_COLUMN,Antenna_Height,double\nminds.cell2g_tmp,HAS_COLUMN,Azimuth,double\nminds.cell2g_tmp,HAS_COLUMN,BCC,double\nminds.cell2g_tmp,HAS_COLUMN,BCCH,double\nminds.cell2g_tmp,HAS_COLUMN,Freq_Band,longtext\nminds...",
+    "content_length": 766,
+    "created_at": "2026-02-24T18:01:00.977628+00:00",
+    "updated_at": "2026-02-24T18:07:49.227546+00:00",
+    "file_path": "edges_part_010__minds.cell2g_tmp__minds.cell3g.csv",
+    "track_id": "upload_20260225_020100_7431c1e5",
+    "metadata": {
+      "processing_start_time": 1771956421,
+      "processing_end_time": 1771956469
+    }
+  },
+  "doc-94f79e8b26a48659a54c6fdfd800ca06": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-94f79e8b26a48659a54c6fdfd800ca06"
+    ],
+    "content_summary": "src,rel,tgt,tgt_data_type\nminds.binkpithreshold,HAS_COLUMN,ID,int\nminds.binkpithreshold,HAS_COLUMN,ParamCatogery,varchar\nminds.binkpithreshold,HAS_COLUMN,ParamName,varchar\nminds.binkpithreshold,HAS_COLUMN,Threshold,float\nminds.binkpiv2,HAS_COLUMN,Act...",
+    "content_length": 1740,
+    "created_at": "2026-02-24T18:01:00.909595+00:00",
+    "updated_at": "2026-02-24T18:07:44.067565+00:00",
+    "file_path": "edges_part_008__minds.binkpithreshold__minds.binkpiv2.csv",
+    "track_id": "upload_20260225_020100_54a1c6e9",
+    "metadata": {
+      "processing_start_time": 1771956421,
+      "processing_end_time": 1771956464
+    }
+  },
+  "doc-1ffcd652b923890962504fd3d9b266ea": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-1ffcd652b923890962504fd3d9b266ea"
+    ],
+    "content_summary": "src,rel,tgt,tgt_data_type\nminds.cell4g,HAS_COLUMN,Antenna_Height,longtext\nminds.cell4g,HAS_COLUMN,Antenna_Model,longtext\nminds.cell4g,HAS_COLUMN,Azimuth,double\nminds.cell4g,HAS_COLUMN,Bandwidth,bigint\nminds.cell4g,HAS_COLUMN,Cell_ID,bigint\nminds.cell...",
+    "content_length": 1165,
+    "created_at": "2026-02-24T18:01:01.008353+00:00",
+    "updated_at": "2026-02-24T18:08:55.487638+00:00",
+    "file_path": "edges_part_011__minds.cell4g__minds.cell5g.csv",
+    "track_id": "upload_20260225_020100_af52aeb4",
+    "metadata": {
+      "processing_start_time": 1771956464,
+      "processing_end_time": 1771956535
+    }
+  },
+  "doc-da359b13f6cc4e65ba4a61b555ccd874": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-da359b13f6cc4e65ba4a61b555ccd874"
+    ],
+    "content_summary": "src,rel,tgt,tgt_data_type\nminds.binspeedtest,HAS_COLUMN,ActiveUser,int\nminds.binspeedtest,HAS_COLUMN,Average_DL_Cell_Throughput,float\nminds.binspeedtest,HAS_COLUMN,Average_DL_User_Throughput,float\nminds.binspeedtest,HAS_COLUMN,Average_UL_Cell_Through...",
+    "content_length": 1988,
+    "created_at": "2026-02-24T18:01:00.924681+00:00",
+    "updated_at": "2026-02-24T18:09:31.388658+00:00",
+    "file_path": "edges_part_009__minds.binspeedtest__minds.cell2g.csv",
+    "track_id": "upload_20260225_020100_4329b79e",
+    "metadata": {
+      "processing_start_time": 1771956469,
+      "processing_end_time": 1771956571
+    }
+  },
+  "doc-e90ae56def068f1f6a8547e8bea13086": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-e90ae56def068f1f6a8547e8bea13086"
+    ],
+    "content_summary": "src,rel,tgt,tgt_data_type\nminds.cellmocn,HAS_COLUMN,Azimuth,int\nminds.cellmocn,HAS_COLUMN,Cell_ID,varchar\nminds.cellmocn,HAS_COLUMN,Cell_Name,varchar\nminds.cellmocn,HAS_COLUMN,DL_EARFCN,int\nminds.cellmocn,HAS_COLUMN,ECI,int\nminds.cellmocn,HAS_COLUMN,...",
+    "content_length": 1056,
+    "created_at": "2026-02-24T18:01:01.586793+00:00",
+    "updated_at": "2026-02-24T18:10:08.569948+00:00",
+    "file_path": "edges_part_012__minds.cellmocn__minds.celltm4g.csv",
+    "track_id": "upload_20260225_020101_ab1e07a8",
+    "metadata": {
+      "processing_start_time": 1771956535,
+      "processing_end_time": 1771956608
+    }
+  },
+  "doc-c84dcb3365d61ae89b4afb4a202b2bf0": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-c84dcb3365d61ae89b4afb4a202b2bf0"
+    ],
+    "content_summary": "src,rel,tgt,tgt_data_type\nminds.clusteradvisorymatrix,HAS_COLUMN,Advisory,text\nminds.clusteradvisorymatrix,HAS_COLUMN,Class,varchar\nminds.clusteradvisorymatrix,HAS_COLUMN,Congestion,varchar\nminds.clusteradvisorymatrix,HAS_COLUMN,CreatedDate,datetime\n...",
+    "content_length": 1154,
+    "created_at": "2026-02-24T18:01:01.970848+00:00",
+    "updated_at": "2026-02-24T18:10:25.004158+00:00",
+    "file_path": "edges_part_013__minds.clusteradvisorymatrix__minds.coverage_boxes.csv",
+    "track_id": "upload_20260225_020101_9c395f98",
+    "metadata": {
+      "processing_start_time": 1771956571,
+      "processing_end_time": 1771956625
+    }
+  },
+  "doc-5f82c2073a8a6aa583a424ccde63cf25": {
+    "status": "processed",
+    "chunks_count": 2,
+    "chunks_list": [
+      "chunk-14dc7ac06c5def25e4f604d2ec1d48e9",
+      "chunk-f3677660b8339fd6fe7a45a516c787af"
+    ],
+    "content_summary": "src,rel,tgt,tgt_data_type\nminds.dailytm4gkpi,HAS_COLUMN,CreatedTime,datetime\nminds.dailytm4gkpi,HAS_COLUMN,DateID,int\nminds.dailytm4gkpi,HAS_COLUMN,ID,int\nminds.dailytm4gkpi,HAS_COLUMN,SiteID,varchar\nminds.dailytm4gkpi,HAS_COLUMN,cell_availability,va...",
+    "content_length": 3696,
+    "created_at": "2026-02-24T18:01:02.034358+00:00",
+    "updated_at": "2026-02-24T18:11:36.149408+00:00",
+    "file_path": "edges_part_014__minds.dailytm4gkpi__minds.dnbdaycluster.csv",
+    "track_id": "upload_20260225_020102_9a677487",
+    "metadata": {
+      "processing_start_time": 1771956608,
+      "processing_end_time": 1771956696
+    }
+  },
+  "doc-3d00291ce0e7dab73b75b2622c900f2b": {
+    "status": "processed",
+    "chunks_count": 2,
+    "chunks_list": [
+      "chunk-2a6f85269a71436aaf000081cf0c5a9d",
+      "chunk-e93e41499dde5167d4678fed41f7dde4"
+    ],
+    "content_summary": "src,rel,tgt,tgt_data_type\nminds.dnbdayregion,HAS_COLUMN,CreatedTime,datetime\nminds.dnbdayregion,HAS_COLUMN,DNOM_AvailabilityLTE,bigint\nminds.dnbdayregion,HAS_COLUMN,DNOM_DownlinkLTE,bigint\nminds.dnbdayregion,HAS_COLUMN,DNOM_ERabDropLTE,bigint\nminds.d...",
+    "content_length": 4079,
+    "created_at": "2026-02-24T18:01:02.062912+00:00",
+    "updated_at": "2026-02-24T18:11:53.695587+00:00",
+    "file_path": "edges_part_015__minds.dnbdayregion__minds.dnbdaysector4g.csv",
+    "track_id": "upload_20260225_020102_b3b6e08d",
+    "metadata": {
+      "processing_start_time": 1771956625,
+      "processing_end_time": 1771956713
+    }
+  },
+  "doc-09db6a75b2c758266b16d36f6b4c64fa": {
+    "status": "processed",
+    "chunks_count": 2,
+    "chunks_list": [
+      "chunk-baa75058436636fb79dc2bdef7f80a4d",
+      "chunk-6290e148cd0f87720d5a3e1bf911832f"
+    ],
+    "content_summary": "src,rel,tgt,tgt_data_type\nminds.dnbdaysector5g,HAS_COLUMN,CreatedTime,datetime\nminds.dnbdaysector5g,HAS_COLUMN,DNOM_callsetup5G,int\nminds.dnbdaysector5g,HAS_COLUMN,DNOM_cellAvailability5G,int\nminds.dnbdaysector5g,HAS_COLUMN,DNOM_dataAbnormal5G,int\nmi...",
+    "content_length": 4211,
+    "created_at": "2026-02-24T18:01:02.093453+00:00",
+    "updated_at": "2026-02-24T18:13:20.900780+00:00",
+    "file_path": "edges_part_016__minds.dnbdaysector5g__minds.dnbdaysite.csv",
+    "track_id": "upload_20260225_020102_275b2d10",
+    "metadata": {
+      "processing_start_time": 1771956696,
+      "processing_end_time": 1771956800
+    }
+  },
+  "doc-fcdfd3e4cfc40486b31babeb0719fad8": {
+    "status": "processed",
+    "chunks_count": 2,
+    "chunks_list": [
+      "chunk-5756404be7459c69de3a54e3aaa1d729",
+      "chunk-0a458e03b75a3cd825a37514b7b681f6"
+    ],
+    "content_summary": "src,rel,tgt,tgt_data_type\nminds.dnbdaystate,HAS_COLUMN,CreatedTime,datetime\nminds.dnbdaystate,HAS_COLUMN,DNOM_AvailabilityLTE,int\nminds.dnbdaystate,HAS_COLUMN,DNOM_DownlinkLTE,bigint\nminds.dnbdaystate,HAS_COLUMN,DNOM_ERabDropLTE,int\nminds.dnbdaystate...",
+    "content_length": 5706,
+    "created_at": "2026-02-24T18:01:02.126505+00:00",
+    "updated_at": "2026-02-24T18:13:12.079250+00:00",
+    "file_path": "edges_part_017__minds.dnbdaystate__minds.dnbhourcluster.csv",
+    "track_id": "upload_20260225_020102_8f33c0c2",
+    "metadata": {
+      "processing_start_time": 1771956713,
+      "processing_end_time": 1771956792
+    }
+  },
+  "doc-215ec6b300f0278f052b17cbe2ef814f": {
+    "status": "processed",
+    "chunks_count": 2,
+    "chunks_list": [
+      "chunk-215ec6b300f0278f052b17cbe2ef814f",
+      "chunk-0666b1b1bd7ce3eb1f0a66b2419dcb19"
+    ],
+    "content_summary": "src,rel,tgt,tgt_data_type\nminds.dnbhoursector4g,HAS_COLUMN,CreatedTime,datetime\nminds.dnbhoursector4g,HAS_COLUMN,DNOM_AvailabilityLTE,int\nminds.dnbhoursector4g,HAS_COLUMN,DNOM_DownlinkLTE,bigint\nminds.dnbhoursector4g,HAS_COLUMN,DNOM_ERabDropLTE,int\nm...",
+    "content_length": 2923,
+    "created_at": "2026-02-24T18:01:02.158441+00:00",
+    "updated_at": "2026-02-24T18:16:05.685235+00:00",
+    "file_path": "edges_part_018__minds.dnbhoursector4g__minds.dnbhoursector5g.csv",
+    "track_id": "upload_20260225_020102_6a2ba1f4",
+    "metadata": {
+      "processing_start_time": 1771956792,
+      "processing_end_time": 1771956965
+    }
+  },
+  "doc-58ffce792dbb8f111518457327551163": {
+    "status": "processed",
+    "chunks_count": 2,
+    "chunks_list": [
+      "chunk-92a6da820dec29870e6665b41b3106f2",
+      "chunk-b0f55bfd66930dbd47a4a6bedc74edbf"
+    ],
+    "content_summary": "src,rel,tgt,tgt_data_type\nminds.dnbhoursite,HAS_COLUMN,CreatedTime,datetime\nminds.dnbhoursite,HAS_COLUMN,DNOM_AvailabilityLTE,int\nminds.dnbhoursite,HAS_COLUMN,DNOM_DownlinkLTE,bigint\nminds.dnbhoursite,HAS_COLUMN,DNOM_ERabDropLTE,int\nminds.dnbhoursite...",
+    "content_length": 5627,
+    "created_at": "2026-02-24T18:01:02.185473+00:00",
+    "updated_at": "2026-02-24T18:16:18.589867+00:00",
+    "file_path": "edges_part_019__minds.dnbhoursite__minds.dnbhourstate.csv",
+    "track_id": "upload_20260225_020102_e626d1a5",
+    "metadata": {
+      "processing_start_time": 1771956800,
+      "processing_end_time": 1771956978
+    }
+  },
+  "doc-519975737e12d105fb0206bce51b3dda": {
+    "status": "processed",
+    "chunks_count": 2,
+    "chunks_list": [
+      "chunk-a4540137d22fdcc4dc0b0740a9865bb0",
+      "chunk-5b2f2ce45cb06bdbfc6ef3beec1afa83"
+    ],
+    "content_summary": "src,rel,tgt,tgt_data_type\nminds.dnbmonthcluster,HAS_COLUMN,ClusterID,varchar\nminds.dnbmonthcluster,HAS_COLUMN,CreatedTime,datetime\nminds.dnbmonthcluster,HAS_COLUMN,DNOM_AvailabilityLTE,bigint\nminds.dnbmonthcluster,HAS_COLUMN,DNOM_DownlinkLTE,bigint\nm...",
+    "content_length": 6074,
+    "created_at": "2026-02-24T18:01:02.204511+00:00",
+    "updated_at": "2026-02-24T18:17:38.369908+00:00",
+    "file_path": "edges_part_020__minds.dnbmonthcluster__minds.dnbmonthregion.csv",
+    "track_id": "upload_20260225_020102_fda29e20",
+    "metadata": {
+      "processing_start_time": 1771956965,
+      "processing_end_time": 1771957058
+    }
+  },
+  "doc-06a841f82a82b77f735d69cc570a655e": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-06a841f82a82b77f735d69cc570a655e"
+    ],
+    "content_summary": "src,rel,tgt,tgt_data_type\nminds.dnbmonthsector4g,HAS_COLUMN,CreatedTime,datetime\nminds.dnbmonthsector4g,HAS_COLUMN,DNOM_AvailabilityLTE,bigint\nminds.dnbmonthsector4g,HAS_COLUMN,DNOM_DownlinkLTE,bigint\nminds.dnbmonthsector4g,HAS_COLUMN,DNOM_ERabDropLT...",
+    "content_length": 2881,
+    "created_at": "2026-02-24T18:01:02.205510+00:00",
+    "updated_at": "2026-02-24T18:18:13.264512+00:00",
+    "file_path": "edges_part_021__minds.dnbmonthsector4g__minds.dnbmonthsector5g.csv",
+    "track_id": "upload_20260225_020102_02d24437",
+    "metadata": {
+      "processing_start_time": 1771956978,
+      "processing_end_time": 1771957093
+    }
+  },
+  "doc-6e237dfae48140cadda64df50162c9c2": {
+    "status": "processed",
+    "chunks_count": 2,
+    "chunks_list": [
+      "chunk-30cc6ffeb7a701dd44a2cc1f0910f5d9",
+      "chunk-cb524a6986b4fddb549ffbf6e6c220a5"
+    ],
+    "content_summary": "src,rel,tgt,tgt_data_type\nminds.dnbmonthsite,HAS_COLUMN,CreatedTime,datetime\nminds.dnbmonthsite,HAS_COLUMN,DNOM_AvailabilityLTE,bigint\nminds.dnbmonthsite,HAS_COLUMN,DNOM_DownlinkLTE,bigint\nminds.dnbmonthsite,HAS_COLUMN,DNOM_ERabDropLTE,bigint\nminds.d...",
+    "content_length": 5854,
+    "created_at": "2026-02-24T18:01:02.227560+00:00",
+    "updated_at": "2026-02-24T18:21:57.355505+00:00",
+    "file_path": "edges_part_022__minds.dnbmonthsite__minds.dnbmonthstate.csv",
+    "track_id": "upload_20260225_020102_2edb3b90",
+    "metadata": {
+      "processing_start_time": 1771957058,
+      "processing_end_time": 1771957317
+    }
+  },
+  "doc-4926926b1b052e02faa6cca25bba19d7": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-4926926b1b052e02faa6cca25bba19d7"
+    ],
+    "content_summary": "src,rel,tgt,tgt_data_type\nminds.dnbsaweekreport,HAS_COLUMN,ID,int\nminds.dnbsaweekreport,HAS_COLUMN,RRCconnectedUser5GSA,text\nminds.dnbsaweekreport,HAS_COLUMN,RegionID,varchar\nminds.dnbsaweekreport,HAS_COLUMN,TicketID,varchar\nminds.dnbsaweekreport,HAS...",
+    "content_length": 661,
+    "created_at": "2026-02-24T18:01:02.232560+00:00",
+    "updated_at": "2026-02-24T18:18:48.226387+00:00",
+    "file_path": "edges_part_023__minds.dnbsaweekreport__minds.dnbsaweekworstcluster.csv",
+    "track_id": "upload_20260225_020102_78773237",
+    "metadata": {
+      "processing_start_time": 1771957093,
+      "processing_end_time": 1771957128
+    }
+  },
+  "doc-bb2a002560475839ea6f21a93903ed05": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-bb2a002560475839ea6f21a93903ed05"
+    ],
+    "content_summary": "src,rel,tgt,tgt_data_type\nminds.dnbsaweekworstsector,HAS_COLUMN,ID,int\nminds.dnbsaweekworstsector,HAS_COLUMN,RRCconnectedUser5GSA,text\nminds.dnbsaweekworstsector,HAS_COLUMN,WeekID,int\nminds.dnbsaweekworstsector,HAS_COLUMN,dataAbnormal5GSA,text\nminds....",
+    "content_length": 571,
+    "created_at": "2026-02-24T18:01:02.244983+00:00",
+    "updated_at": "2026-02-24T18:19:29.138683+00:00",
+    "file_path": "edges_part_024__minds.dnbsaweekworstsector__minds.dnbsaweekworstsite.csv",
+    "track_id": "upload_20260225_020102_edfda0dd",
+    "metadata": {
+      "processing_start_time": 1771957128,
+      "processing_end_time": 1771957169
+    }
+  },
+  "doc-85678f4bfc5bc214b69277964f5e9a39": {
+    "status": "processed",
+    "chunks_count": 2,
+    "chunks_list": [
+      "chunk-ca239f3629fa93d1696ef53462dd4122",
+      "chunk-7c57c5859fc107b51c785a6b7fd97273"
+    ],
+    "content_summary": "src,rel,tgt,tgt_data_type\nminds.dnbweekcluster,HAS_COLUMN,ClusterID,varchar\nminds.dnbweekcluster,HAS_COLUMN,CreatedTime,datetime\nminds.dnbweekcluster,HAS_COLUMN,DNOM_AvailabilityLTE,int\nminds.dnbweekcluster,HAS_COLUMN,DNOM_DownlinkLTE,bigint\nminds.dn...",
+    "content_length": 5874,
+    "created_at": "2026-02-24T18:01:02.265004+00:00",
+    "updated_at": "2026-02-24T18:21:42.507734+00:00",
+    "file_path": "edges_part_025__minds.dnbweekcluster__minds.dnbweekregion.csv",
+    "track_id": "upload_20260225_020102_53aae7a4",
+    "metadata": {
+      "processing_start_time": 1771957169,
+      "processing_end_time": 1771957302
+    }
+  },
+  "doc-77f7814cb07ab4b2713515c16abf5aba": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-77f7814cb07ab4b2713515c16abf5aba"
+    ],
+    "content_summary": "src,rel,tgt,tgt_data_type\nminds.dnbweekreport,HAS_COLUMN,CreatedDate,datetime\nminds.dnbweekreport,HAS_COLUMN,ID,int\nminds.dnbweekreport,HAS_COLUMN,RRCconnectedUser5GSA,text\nminds.dnbweekreport,HAS_COLUMN,RegionID,varchar\nminds.dnbweekreport,HAS_COLUM...",
+    "content_length": 2958,
+    "created_at": "2026-02-24T18:01:02.283032+00:00",
+    "updated_at": "2026-02-24T18:23:05.011885+00:00",
+    "file_path": "edges_part_026__minds.dnbweekreport__minds.dnbweeksector4g.csv",
+    "track_id": "upload_20260225_020102_8268bbbf",
+    "metadata": {
+      "processing_start_time": 1771957302,
+      "processing_end_time": 1771957385
+    }
+  },
+  "doc-2f398bb96a7db36850d7cc5e17371c81": {
+    "status": "processed",
+    "chunks_count": 2,
+    "chunks_list": [
+      "chunk-f27db4eebb5aa79fa1ff7c5fd3b6b9cf",
+      "chunk-e5c17f7bf6b1da5df92dd6e5ceacc707"
+    ],
+    "content_summary": "src,rel,tgt,tgt_data_type\nminds.dnbweeksector5g,HAS_COLUMN,CreatedTime,datetime\nminds.dnbweeksector5g,HAS_COLUMN,DNOM_callsetup5G,int\nminds.dnbweeksector5g,HAS_COLUMN,DNOM_cellAvailability5G,int\nminds.dnbweeksector5g,HAS_COLUMN,DNOM_dataAbnormal5G,in...",
+    "content_length": 4293,
+    "created_at": "2026-02-24T18:01:02.303399+00:00",
+    "updated_at": "2026-02-24T18:23:31.016297+00:00",
+    "file_path": "edges_part_027__minds.dnbweeksector5g__minds.dnbweeksite.csv",
+    "track_id": "upload_20260225_020102_4182713a",
+    "metadata": {
+      "processing_start_time": 1771957317,
+      "processing_end_time": 1771957411
+    }
+  },
+  "doc-a146294e5bd0fda6e318ac1fbb1e9175": {
+    "status": "processed",
+    "chunks_count": 2,
+    "chunks_list": [
+      "chunk-e405358389a70fb713fb8c4d0790b9b3",
+      "chunk-b7ce8a68f70a1800d177b58dc0cc86bf"
+    ],
+    "content_summary": "src,rel,tgt,tgt_data_type\nminds.dnbweekstate,HAS_COLUMN,CreatedTime,datetime\nminds.dnbweekstate,HAS_COLUMN,DNOM_AvailabilityLTE,bigint\nminds.dnbweekstate,HAS_COLUMN,DNOM_DownlinkLTE,bigint\nminds.dnbweekstate,HAS_COLUMN,DNOM_ERabDropLTE,bigint\nminds.d...",
+    "content_length": 4683,
+    "created_at": "2026-02-24T18:01:02.313724+00:00",
+    "updated_at": "2026-02-24T18:24:26.343874+00:00",
+    "file_path": "edges_part_028__minds.dnbweekstate__minds.dnbweekworstcluster.csv",
+    "track_id": "upload_20260225_020102_215f5800",
+    "metadata": {
+      "processing_start_time": 1771957385,
+      "processing_end_time": 1771957466
+    }
+  },
+  "doc-f6a7b659647bcb4c6720a94d54c872f6": {
+    "status": "processed",
+    "chunks_count": 2,
+    "chunks_list": [
+      "chunk-f6a7b659647bcb4c6720a94d54c872f6",
+      "chunk-de2611674c1a50cefed8d910fd1b5813"
+    ],
+    "content_summary": "src,rel,tgt,tgt_data_type\nminds.dnbweekworstsector,HAS_COLUMN,ID,int\nminds.dnbweekworstsector,HAS_COLUMN,RRCconnectedUser5GSA,text\nminds.dnbweekworstsector,HAS_COLUMN,WeekID,int\nminds.dnbweekworstsector,HAS_COLUMN,cell_availability_5g,text\nminds.dnbw...",
+    "content_length": 3451,
+    "created_at": "2026-02-24T18:01:02.340887+00:00",
+    "updated_at": "2026-02-24T18:29:00.654370+00:00",
+    "file_path": "edges_part_029__minds.dnbweekworstsector__minds.dnbweekworstsite.csv",
+    "track_id": "upload_20260225_020102_f9aaf19a",
+    "metadata": {
+      "processing_start_time": 1771957411,
+      "processing_end_time": 1771957740
+    }
+  },
+  "doc-e1d52c6cd9b46067ce04a5f3926e540c": {
+    "status": "processed",
+    "chunks_count": 2,
+    "chunks_list": [
+      "chunk-c91ed765582a3d876a544433431e83a2",
+      "chunk-21c2dfc3c53755f17d539a7cfc5ec7a2"
+    ],
+    "content_summary": "src,rel,tgt,tgt_data_type\nminds.exclusionsite,HAS_COLUMN,CreatedDate,datetime\nminds.exclusionsite,HAS_COLUMN,EndDate,date\nminds.exclusionsite,HAS_COLUMN,ID,int\nminds.exclusionsite,HAS_COLUMN,ProcessingDate,date\nminds.exclusionsite,HAS_COLUMN,SiteID,v...",
+    "content_length": 4255,
+    "created_at": "2026-02-24T18:01:02.360907+00:00",
+    "updated_at": "2026-02-24T18:26:14.792348+00:00",
+    "file_path": "edges_part_030__minds.exclusionsite__minds.exclusiontm4gdaysite.csv",
+    "track_id": "upload_20260225_020102_0c00abb3",
+    "metadata": {
+      "processing_start_time": 1771957466,
+      "processing_end_time": 1771957574
+    }
+  },
+  "doc-9ce4807eeeb77bc84cc3f61c698f1591": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-9ce4807eeeb77bc84cc3f61c698f1591"
+    ],
+    "content_summary": "src,rel,tgt,tgt_data_type\nminds.groups,HAS_COLUMN,email,varchar\nminds.groups,HAS_COLUMN,group_ptr_id,int\nminds.history_performance_handover_4g,HAS_COLUMN,azimuth,double\nminds.history_performance_handover_4g,HAS_COLUMN,handover_success,int\nminds.histo...",
+    "content_length": 1324,
+    "created_at": "2026-02-24T18:01:02.384540+00:00",
+    "updated_at": "2026-02-24T18:27:28.953209+00:00",
+    "file_path": "edges_part_031__minds.groups__minds.history_performance_handover_4g.csv",
+    "track_id": "upload_20260225_020102_6fe4f241",
+    "metadata": {
+      "processing_start_time": 1771957574,
+      "processing_end_time": 1771957648
+    }
+  },
+  "doc-dd6486d7653636be3b8e279d90a31669": {
+    "status": "processed",
+    "chunks_count": 2,
+    "chunks_list": [
+      "chunk-2d5b4d86dbb57fbccec7ece680c9b79a",
+      "chunk-6b2ad563626cfdd7b5dc934653ab648e"
+    ],
+    "content_summary": "src,rel,tgt,tgt_data_type\nminds.huawei_ems,HAS_COLUMN,0KM_To_0_078KM,double\nminds.huawei_ems,HAS_COLUMN,0_078KM_To_0_234KM,double\nminds.huawei_ems,HAS_COLUMN,0_234KM_To_0_546KM,double\nminds.huawei_ems,HAS_COLUMN,0_546KM_To_1_014KM,double\nminds.huawei...",
+    "content_length": 5128,
+    "created_at": "2026-02-24T18:01:02.398563+00:00",
+    "updated_at": "2026-02-24T18:28:15.815706+00:00",
+    "file_path": "edges_part_032__minds.huawei_ems__minds.huaweidaycluster.csv",
+    "track_id": "upload_20260225_020102_9851a1f7",
+    "metadata": {
+      "processing_start_time": 1771957649,
+      "processing_end_time": 1771957695
+    }
+  },
+  "doc-1ec097a49aa28b8a0ec62d128c99564e": {
+    "status": "processed",
+    "chunks_count": 3,
+    "chunks_list": [
+      "chunk-d73ad77304d5c67724f5be56c900763b",
+      "chunk-dd94b9ea3465a522fef5a8a99eab465a",
+      "chunk-483decc828e76e97589500c840eba7ec"
+    ],
+    "content_summary": "src,rel,tgt,tgt_data_type\nminds.huaweidaysector,HAS_COLUMN,Average_DL_Cell_Throughput,float\nminds.huaweidaysector,HAS_COLUMN,Average_DL_User_Throughput_DENOM,bigint\nminds.huaweidaysector,HAS_COLUMN,Average_DL_User_Throughput_NUM,bigint\nminds.huaweida...",
+    "content_length": 7063,
+    "created_at": "2026-02-24T18:01:02.425595+00:00",
+    "updated_at": "2026-02-24T18:31:10.652696+00:00",
+    "file_path": "edges_part_033__minds.huaweidaysector__minds.huaweidaysector_copy.csv",
+    "track_id": "upload_20260225_020102_afebdc64",
+    "metadata": {
+      "processing_start_time": 1771957695,
+      "processing_end_time": 1771957870
+    }
+  },
+  "doc-c066a511a13012a34bb5c517cacb95ee": {
+    "status": "processed",
+    "chunks_count": 2,
+    "chunks_list": [
+      "chunk-ef1a1bf1845a1865a150e387ee55b4bc",
+      "chunk-50fd0757cedcf170215aa41b9601b868"
+    ],
+    "content_summary": "src,rel,tgt,tgt_data_type\nminds.huaweidaysectorcopy,HAS_COLUMN,Average_DL_Cell_Throughput,float\nminds.huaweidaysectorcopy,HAS_COLUMN,Average_DL_User_Throughput_DENOM,bigint\nminds.huaweidaysectorcopy,HAS_COLUMN,Average_DL_User_Throughput_NUM,bigint\nmi...",
+    "content_length": 6148,
+    "created_at": "2026-02-24T18:01:02.437401+00:00",
+    "updated_at": "2026-02-24T18:30:30.768456+00:00",
+    "file_path": "edges_part_034__minds.huaweidaysectorcopy__minds.huaweidaysite.csv",
+    "track_id": "upload_20260225_020102_8c7f46ae",
+    "metadata": {
+      "processing_start_time": 1771957740,
+      "processing_end_time": 1771957830
+    }
+  },
+  "doc-6b935a876c510f2836a95381f7f03ac0": {
+    "status": "processed",
+    "chunks_count": 2,
+    "chunks_list": [
+      "chunk-df9f0f3da7a33263aed058d5d8e98cde",
+      "chunk-a5b450aebc719b6178244d33764b8ef9"
+    ],
+    "content_summary": "src,rel,tgt,tgt_data_type\nminds.huaweidaystate,HAS_COLUMN,CSFB_Success_LTE_to_GSM,double\nminds.huaweidaystate,HAS_COLUMN,CSFB_Success_LTE_to_WCDMA,double\nminds.huaweidaystate,HAS_COLUMN,CreatedTime,datetime\nminds.huaweidaystate,HAS_COLUMN,Date,date\nm...",
+    "content_length": 5317,
+    "created_at": "2026-02-24T18:01:02.446907+00:00",
+    "updated_at": "2026-02-24T18:32:45.830275+00:00",
+    "file_path": "edges_part_035__minds.huaweidaystate__minds.huaweimonthcluster.csv",
+    "track_id": "upload_20260225_020102_5a37b9a3",
+    "metadata": {
+      "processing_start_time": 1771957831,
+      "processing_end_time": 1771957965
+    }
+  },
+  "doc-ce4598e0b4ec44022cddf3db66709358": {
+    "status": "processed",
+    "chunks_count": 2,
+    "chunks_list": [
+      "chunk-df89c656dd6fe5a00c218f8aa7aa7bb7",
+      "chunk-880f6184a4bd829fa848a700652a33ae"
+    ],
+    "content_summary": "src,rel,tgt,tgt_data_type\nminds.huaweimonthsector,HAS_COLUMN,CSFB_Success_LTE_to_GSM,double\nminds.huaweimonthsector,HAS_COLUMN,CSFB_Success_LTE_to_WCDMA,double\nminds.huaweimonthsector,HAS_COLUMN,Cell,text\nminds.huaweimonthsector,HAS_COLUMN,CreatedTim...",
+    "content_length": 5411,
+    "created_at": "2026-02-24T18:01:02.458428+00:00",
+    "updated_at": "2026-02-24T18:32:16.038581+00:00",
+    "file_path": "edges_part_036__minds.huaweimonthsector__minds.huaweimonthsite.csv",
+    "track_id": "upload_20260225_020102_5c092521",
+    "metadata": {
+      "processing_start_time": 1771957870,
+      "processing_end_time": 1771957936
+    }
+  },
+  "doc-d42f846e5add1f7d58a2922a753c12fa": {
+    "status": "processed",
+    "chunks_count": 2,
+    "chunks_list": [
+      "chunk-0d8d81ee89cd7a16bb3ac530a8f61a6d",
+      "chunk-eadcf03e918da30699c5f81fb27fcca1"
+    ],
+    "content_summary": "src,rel,tgt,tgt_data_type\nminds.huaweimonthstate,HAS_COLUMN,CSFB_Success_LTE_to_GSM,double\nminds.huaweimonthstate,HAS_COLUMN,CSFB_Success_LTE_to_WCDMA,double\nminds.huaweimonthstate,HAS_COLUMN,CreatedTime,datetime\nminds.huaweimonthstate,HAS_COLUMN,ID,...",
+    "content_length": 5356,
+    "created_at": "2026-02-24T18:01:02.477450+00:00",
+    "updated_at": "2026-02-24T18:34:49.937321+00:00",
+    "file_path": "edges_part_037__minds.huaweimonthstate__minds.huaweiweekcluster.csv",
+    "track_id": "upload_20260225_020102_37a96675",
+    "metadata": {
+      "processing_start_time": 1771957936,
+      "processing_end_time": 1771958089
+    }
+  },
+  "doc-07c6739158dba2f422dea3646cb23868": {
+    "status": "processed",
+    "chunks_count": 2,
+    "chunks_list": [
+      "chunk-9fd83919c5307dec5f470fb0b25ae997",
+      "chunk-214c08b94cdbb7f421677bd16f77cc7a"
+    ],
+    "content_summary": "src,rel,tgt,tgt_data_type\nminds.huaweiweeksector,HAS_COLUMN,CSFB_Success_LTE_to_GSM,double\nminds.huaweiweeksector,HAS_COLUMN,CSFB_Success_LTE_to_WCDMA,double\nminds.huaweiweeksector,HAS_COLUMN,Cell,text\nminds.huaweiweeksector,HAS_COLUMN,CreatedTime,da...",
+    "content_length": 5331,
+    "created_at": "2026-02-24T18:01:02.490968+00:00",
+    "updated_at": "2026-02-24T18:34:21.408334+00:00",
+    "file_path": "edges_part_038__minds.huaweiweeksector__minds.huaweiweeksite.csv",
+    "track_id": "upload_20260225_020102_63fe6dd7",
+    "metadata": {
+      "processing_start_time": 1771957965,
+      "processing_end_time": 1771958061
+    }
+  },
+  "doc-7ce5c5b4aef94860bee90c41a251cb72": {
+    "status": "processed",
+    "chunks_count": 2,
+    "chunks_list": [
+      "chunk-70206ba54f3de611d81f4574ef37d966",
+      "chunk-adc3d6483bc531db39538f023b6f15d2"
+    ],
+    "content_summary": "src,rel,tgt,tgt_data_type\nminds.huaweiweekstate,HAS_COLUMN,CSFB_Success_LTE_to_GSM,double\nminds.huaweiweekstate,HAS_COLUMN,CSFB_Success_LTE_to_WCDMA,double\nminds.huaweiweekstate,HAS_COLUMN,CreatedTime,datetime\nminds.huaweiweekstate,HAS_COLUMN,ID,int\n...",
+    "content_length": 5085,
+    "created_at": "2026-02-24T18:01:02.504485+00:00",
+    "updated_at": "2026-02-24T18:36:20.550429+00:00",
+    "file_path": "edges_part_039__minds.huaweiweekstate__minds.kpi_huawei.csv",
+    "track_id": "upload_20260225_020102_00ceecb0",
+    "metadata": {
+      "processing_start_time": 1771958061,
+      "processing_end_time": 1771958180
+    }
+  },
+  "doc-acdf63beb4238a869451943a7b17fb35": {
+    "status": "processed",
+    "chunks_count": 2,
+    "chunks_list": [
+      "chunk-c716d40ee501527fee6005d23e6ea8fb",
+      "chunk-bd36a2e03452965680b82fb71e84e88c"
+    ],
+    "content_summary": "src,rel,tgt,tgt_data_type\nminds.kpi_zte,HAS_COLUMN,Average EMI DL,double\nminds.kpi_zte,HAS_COLUMN,Average_Cell_RSSI_dBm,double\nminds.kpi_zte,HAS_COLUMN,Cell,longtext\nminds.kpi_zte,HAS_COLUMN,Date,date\nminds.kpi_zte,HAS_COLUMN,Integrity,double\nminds.k...",
+    "content_length": 4028,
+    "created_at": "2026-02-24T18:01:02.517508+00:00",
+    "updated_at": "2026-02-24T18:36:11.914410+00:00",
+    "file_path": "edges_part_040__minds.kpi_zte__minds.maxisweekregion.csv",
+    "track_id": "upload_20260225_020102_09c3c02b",
+    "metadata": {
+      "processing_start_time": 1771958090,
+      "processing_end_time": 1771958171
+    }
+  },
+  "doc-22991cfd1aef9702075b618b9e1c7a1b": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-22991cfd1aef9702075b618b9e1c7a1b"
+    ],
+    "content_summary": "src,rel,tgt,tgt_data_type\nminds.maxisweekreport,HAS_COLUMN,CreatedDate,datetime\nminds.maxisweekreport,HAS_COLUMN,ID,int\nminds.maxisweekreport,HAS_COLUMN,RegionID,varchar\nminds.maxisweekreport,HAS_COLUMN,TicketID,varchar\nminds.maxisweekreport,HAS_COLU...",
+    "content_length": 1435,
+    "created_at": "2026-02-24T18:01:02.533563+00:00",
+    "updated_at": "2026-02-24T18:37:28.891827+00:00",
+    "file_path": "edges_part_041__minds.maxisweekreport__minds.maxisweekworstcluster.csv",
+    "track_id": "upload_20260225_020102_4b4dfddd",
+    "metadata": {
+      "processing_start_time": 1771958171,
+      "processing_end_time": 1771958248
+    }
+  },
+  "doc-b1a207d4ed9bcf6ea7238dceeb076c1d": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-b1a207d4ed9bcf6ea7238dceeb076c1d"
+    ],
+    "content_summary": "src,rel,tgt,tgt_data_type\nminds.maxisweekworstsector,HAS_COLUMN,ID,int\nminds.maxisweekworstsector,HAS_COLUMN,WeekID,int\nminds.maxisweekworstsector,HAS_COLUMN,data_drop,text\nminds.maxisweekworstsector,HAS_COLUMN,data_setup,text\nminds.maxisweekworstsec...",
+    "content_length": 1305,
+    "created_at": "2026-02-24T18:01:02.546579+00:00",
+    "updated_at": "2026-02-24T18:37:20.130936+00:00",
+    "file_path": "edges_part_042__minds.maxisweekworstsector__minds.maxisweekworstsite.csv",
+    "track_id": "upload_20260225_020102_9c852deb",
+    "metadata": {
+      "processing_start_time": 1771958180,
+      "processing_end_time": 1771958240
+    }
+  },
+  "doc-b316c06577022517b3758f0bd617a236": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-b316c06577022517b3758f0bd617a236"
+    ],
+    "content_summary": "src,rel,tgt,tgt_data_type\nminds.ncbindetection,HAS_COLUMN,CreatedTime,datetime\nminds.ncbindetection,HAS_COLUMN,DateID,int\nminds.ncbindetection,HAS_COLUMN,Grid_ID,varchar\nminds.ncbindetection,HAS_COLUMN,ID,int\nminds.ncbindetection,HAS_COLUMN,Morpholog...",
+    "content_length": 1310,
+    "created_at": "2026-02-24T18:01:02.562754+00:00",
+    "updated_at": "2026-02-24T18:38:22.321425+00:00",
+    "file_path": "edges_part_043__minds.ncbindetection__minds.ncbinspeed.csv",
+    "track_id": "upload_20260225_020102_3f008097",
+    "metadata": {
+      "processing_start_time": 1771958240,
+      "processing_end_time": 1771958302
+    }
+  },
+  "doc-de011003dbe3d14daad67d476e6bd9f0": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-de011003dbe3d14daad67d476e6bd9f0"
+    ],
+    "content_summary": "src,rel,tgt,tgt_data_type\nminds.ntt_lte_filter,HAS_COLUMN,AFFECTED_AREA,longtext\nminds.ntt_lte_filter,HAS_COLUMN,CAUSE_CATEGORY,longtext\nminds.ntt_lte_filter,HAS_COLUMN,CLOSED_DATE,longtext\nminds.ntt_lte_filter,HAS_COLUMN,EQUIPMENT_TYPE,longtext\nmind...",
+    "content_length": 2345,
+    "created_at": "2026-02-24T18:01:02.571868+00:00",
+    "updated_at": "2026-02-24T18:39:26.113646+00:00",
+    "file_path": "edges_part_044__minds.ntt_lte_filter__minds.ntt_mocn.csv",
+    "track_id": "upload_20260225_020102_9303fde2",
+    "metadata": {
+      "processing_start_time": 1771958248,
+      "processing_end_time": 1771958366
+    }
+  },
+  "doc-a95c3c4881c802b771a4b0e65513f5cc": {
+    "status": "processed",
+    "chunks_count": 2,
+    "chunks_list": [
+      "chunk-dcc1a710fc6204de17092ad8997ce57d",
+      "chunk-70bc219a2622700a1b2cdb46b29e9d44"
+    ],
+    "content_summary": "src,rel,tgt,tgt_data_type\nminds.ooklasectordaily,HAS_COLUMN,ActiveUser,int\nminds.ooklasectordaily,HAS_COLUMN,Average_DL_Cell_Throughput,float\nminds.ooklasectordaily,HAS_COLUMN,Average_DL_User_Throughput,float\nminds.ooklasectordaily,HAS_COLUMN,Average...",
+    "content_length": 3926,
+    "created_at": "2026-02-24T18:01:02.586881+00:00",
+    "updated_at": "2026-02-24T18:41:41.840845+00:00",
+    "file_path": "edges_part_045__minds.ooklasectordaily__minds.site2g.csv",
+    "track_id": "upload_20260225_020102_9fe0aaad",
+    "metadata": {
+      "processing_start_time": 1771958302,
+      "processing_end_time": 1771958501
+    }
+  },
+  "doc-2dac5b924c012c3df6ba7e94f038d602": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-2dac5b924c012c3df6ba7e94f038d602"
+    ],
+    "content_summary": "src,rel,tgt,tgt_data_type\nminds.site3g,HAS_COLUMN,Address,longtext\nminds.site3g,HAS_COLUMN,LAC,longtext\nminds.site3g,HAS_COLUMN,Latitude,double\nminds.site3g,HAS_COLUMN,Longitude,double\nminds.site3g,HAS_COLUMN,Region,longtext\nminds.site3g,HAS_COLUMN,S...",
+    "content_length": 1747,
+    "created_at": "2026-02-24T18:01:02.593886+00:00",
+    "updated_at": "2026-02-24T18:40:04.931274+00:00",
+    "file_path": "edges_part_046__minds.site3g__minds.site4g.csv",
+    "track_id": "upload_20260225_020102_340e3667",
+    "metadata": {
+      "processing_start_time": 1771958366,
+      "processing_end_time": 1771958404
+    }
+  },
+  "doc-6a3c8ed05608d038a8463f6c78aea547": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-6a3c8ed05608d038a8463f6c78aea547"
+    ],
+    "content_summary": "src,rel,tgt,tgt_data_type\nminds.site4g_backup,HAS_COLUMN,Address,longtext\nminds.site4g_backup,HAS_COLUMN,Backhaul,longtext\nminds.site4g_backup,HAS_COLUMN,Cluster_ID,longtext\nminds.site4g_backup,HAS_COLUMN,Cluster_Name,longtext\nminds.site4g_backup,HAS...",
+    "content_length": 1482,
+    "created_at": "2026-02-24T18:01:02.612917+00:00",
+    "updated_at": "2026-02-24T18:41:01.050498+00:00",
+    "file_path": "edges_part_047__minds.site4g_backup__minds.site4gipaddress.csv",
+    "track_id": "upload_20260225_020102_32b8673e",
+    "metadata": {
+      "processing_start_time": 1771958404,
+      "processing_end_time": 1771958461
+    }
+  },
+  "doc-0eb3342e299b1612ef4c8e6b49696eb1": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-0eb3342e299b1612ef4c8e6b49696eb1"
+    ],
+    "content_summary": "src,rel,tgt,tgt_data_type\nminds.site4gmocn,HAS_COLUMN,ENODEB_ID,int\nminds.site4gmocn,HAS_COLUMN,LATITUDE,double\nminds.site4gmocn,HAS_COLUMN,LONGITUDE,double\nminds.site4gmocn,HAS_COLUMN,SITE_ID,varchar\nminds.site5g,HAS_COLUMN,Address,longtext\nminds.si...",
+    "content_length": 898,
+    "created_at": "2026-02-24T18:01:02.618430+00:00",
+    "updated_at": "2026-02-24T18:42:03.329315+00:00",
+    "file_path": "edges_part_048__minds.site4gmocn__minds.site5g.csv",
+    "track_id": "upload_20260225_020102_a3d6ff63",
+    "metadata": {
+      "processing_start_time": 1771958461,
+      "processing_end_time": 1771958523
+    }
+  },
+  "doc-a4c4c450268535cf0952533e1a2bb96c": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-a4c4c450268535cf0952533e1a2bb96c"
+    ],
+    "content_summary": "src,rel,tgt,tgt_data_type\nminds.siteaop,HAS_COLUMN,fdd850_rfs_date,date\nminds.siteaop,HAS_COLUMN,id,int\nminds.siteaop,HAS_COLUMN,latitude,double\nminds.siteaop,HAS_COLUMN,longitude,double\nminds.siteaop,HAS_COLUMN,new_aop,varchar\nminds.siteaop,HAS_COLU...",
+    "content_length": 793,
+    "created_at": "2026-02-24T18:01:02.636611+00:00",
+    "updated_at": "2026-02-24T18:42:32.041242+00:00",
+    "file_path": "edges_part_049__minds.siteaop__minds.sitebinlist.csv",
+    "track_id": "upload_20260225_020102_08ff4091",
+    "metadata": {
+      "processing_start_time": 1771958501,
+      "processing_end_time": 1771958552
+    }
+  },
+  "doc-10c09807487289b7fafa59997db728eb": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-10c09807487289b7fafa59997db728eb"
+    ],
+    "content_summary": "src,rel,tgt,tgt_data_type\nminds.sitemocn,HAS_COLUMN,Address,longtext\nminds.sitemocn,HAS_COLUMN,Cluster,varchar\nminds.sitemocn,HAS_COLUMN,Latitude,double\nminds.sitemocn,HAS_COLUMN,Longitude,double\nminds.sitemocn,HAS_COLUMN,Phase,varchar\nminds.sitemocn...",
+    "content_length": 1246,
+    "created_at": "2026-02-24T18:01:02.647862+00:00",
+    "updated_at": "2026-02-24T18:43:03.936389+00:00",
+    "file_path": "edges_part_050__minds.sitemocn__minds.sitemocn_ori_backup.csv",
+    "track_id": "upload_20260225_020102_0d5e2612",
+    "metadata": {
+      "processing_start_time": 1771958523,
+      "processing_end_time": 1771958583
+    }
+  },
+  "doc-e2067c491032178c1547440dc0261c04": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-e2067c491032178c1547440dc0261c04"
+    ],
+    "content_summary": "src,rel,tgt,tgt_data_type\nminds.speedtestbinsummary,HAS_COLUMN,ActiveUser,int\nminds.speedtestbinsummary,HAS_COLUMN,CreatedDate,datetime\nminds.speedtestbinsummary,HAS_COLUMN,DateID,int\nminds.speedtestbinsummary,HAS_COLUMN,Download,varchar\nminds.speedt...",
+    "content_length": 1262,
+    "created_at": "2026-02-24T18:01:02.659375+00:00",
+    "updated_at": "2026-02-24T18:43:33.486140+00:00",
+    "file_path": "edges_part_051__minds.speedtestbinsummary__minds.subscribers.csv",
+    "track_id": "upload_20260225_020102_baba12e4",
+    "metadata": {
+      "processing_start_time": 1771958552,
+      "processing_end_time": 1771958613
+    }
+  },
+  "doc-e2ed773c1ede5b74ff52316a7481b8c0": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-e2ed773c1ede5b74ff52316a7481b8c0"
+    ],
+    "content_summary": "src,rel,tgt,tgt_data_type\nminds.thd,HAS_COLUMN,Aging,varchar\nminds.thd,HAS_COLUMN,BusinessUnit,varchar\nminds.thd,HAS_COLUMN,CPMPlanner,varchar\nminds.thd,HAS_COLUMN,CaseAging,double\nminds.thd,HAS_COLUMN,CaseCategory,varchar\nminds.thd,HAS_COLUMN,CaseNu...",
+    "content_length": 2725,
+    "created_at": "2026-02-24T18:01:02.669891+00:00",
+    "updated_at": "2026-02-24T18:43:51.527789+00:00",
+    "file_path": "edges_part_052__minds.thd__minds.thd_bulletinb.csv",
+    "track_id": "upload_20260225_020102_37eca17f",
+    "metadata": {
+      "processing_start_time": 1771958584,
+      "processing_end_time": 1771958631
+    }
+  },
+  "doc-6d471d3eb64fe98e13c53997445e60e3": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-6d471d3eb64fe98e13c53997445e60e3"
+    ],
+    "content_summary": "src,rel,tgt,tgt_data_type\nminds.thd_ticket,HAS_COLUMN,avg_cell_availability,varchar\nminds.thd_ticket,HAS_COLUMN,case_type,varchar\nminds.thd_ticket,HAS_COLUMN,celcom_feedback,longtext\nminds.thd_ticket,HAS_COLUMN,cell_upgrade,varchar\nminds.thd_ticket,H...",
+    "content_length": 2888,
+    "created_at": "2026-02-24T18:01:02.686910+00:00",
+    "updated_at": "2026-02-24T18:44:43.397996+00:00",
+    "file_path": "edges_part_053__minds.thd_ticket__minds.thd_ticket_escalated_groups.csv",
+    "track_id": "upload_20260225_020102_887feb32",
+    "metadata": {
+      "processing_start_time": 1771958613,
+      "processing_end_time": 1771958683
+    }
+  },
+  "doc-29293d3fddd42d45b4cbe975c9672e73": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-29293d3fddd42d45b4cbe975c9672e73"
+    ],
+    "content_summary": "src,rel,tgt,tgt_data_type\nminds.thd_ticket_feedback,HAS_COLUMN,close_date,datetime\nminds.thd_ticket_feedback,HAS_COLUMN,created_at,datetime\nminds.thd_ticket_feedback,HAS_COLUMN,feedback,longtext\nminds.thd_ticket_feedback,HAS_COLUMN,group_id,int\nminds...",
+    "content_length": 946,
+    "created_at": "2026-02-24T18:01:02.706934+00:00",
+    "updated_at": "2026-02-24T18:44:48.264756+00:00",
+    "file_path": "edges_part_054__minds.thd_ticket_feedback__minds.tm4gtwamphour.csv",
+    "track_id": "upload_20260225_020102_ac71107c",
+    "metadata": {
+      "processing_start_time": 1771958631,
+      "processing_end_time": 1771958688
+    }
+  },
+  "doc-c4fa99890fcbf072942d0ba71974df7e": {
+    "status": "processed",
+    "chunks_count": 12,
+    "chunks_list": [
+      "chunk-47b1ad75090b2b185dbaac367bff0fef",
+      "chunk-ceaa1eacb0a6e1482334728f1a5dc1f7",
+      "chunk-3d5c1028474454b11a17c9287042af26",
+      "chunk-9474ffa175bc9456b2e3b158588250ed",
+      "chunk-c1d15aa9ff07be327d1ec8f104257042",
+      "chunk-2d6d155c6e1d5c92c34a45220ff40e2a",
+      "chunk-3c5bdee7922a80720497040b862ce8f2",
+      "chunk-002977e2d568740f1530332d6a8e9fe1",
+      "chunk-fe1849df63b3792dd759265a58709079",
+      "chunk-08d0694faa4f889efb55595563bd34aa",
+      "chunk-4b2903116fe933f56d0938b512c2fb69",
+      "chunk-481fb7af9a44532144d650f7ad382fa0"
+    ],
+    "content_summary": "{\n  \"sql\": [\n    {\n      \"endpoint\": \"GET ticket/vip_ticket_list\",\n      \"description\": \"Enables staff to view and search VIP (high-priority) customer trouble tickets. Users can find tickets by ticket number, person in charge (PSC PIC), customer name...",
+    "content_length": 53985,
+    "created_at": "2026-02-24T18:48:53.468277+00:00",
+    "updated_at": "2026-02-24T18:51:08.332420+00:00",
+    "file_path": "datasetsv2.json",
+    "track_id": "upload_20260225_024853_60650f37",
+    "metadata": {
+      "processing_start_time": 1771958933,
+      "processing_end_time": 1771959068
+    }
+  }
+}
