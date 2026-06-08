@@ -3,7 +3,7 @@ import { DatabaseModule } from '../../database/database.module';
 import { ModelProvider } from '../../chat/providers/model.provider';
 import { SqlSafetyService } from './safety/sql-safety.service';
 import { JsonRenderSchemaService } from './visualization/json-render.schema';
-import { LightragHarnessTool } from './tools/lightrag.tool';
+import { LancedbRetrievalTool } from './tools/lancedb-retrieve.tool';
 import { SqlExecuteHarnessTool } from './tools/sql-execute.tool';
 import { SqlAgentService } from './agents/sql.agent';
 
@@ -13,14 +13,14 @@ import { SqlAgentService } from './agents/sql.agent';
     ModelProvider,
     SqlSafetyService,
     JsonRenderSchemaService,
-    LightragHarnessTool,
+    LancedbRetrievalTool,
     SqlExecuteHarnessTool,
     SqlAgentService,
   ],
   exports: [
     SqlSafetyService,
     JsonRenderSchemaService,
-    LightragHarnessTool,
+    LancedbRetrievalTool,
     SqlExecuteHarnessTool,
     SqlAgentService,
   ],

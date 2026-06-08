@@ -1,4 +1,4 @@
-# Codex Task List: Mastra Text-to-SQL Agent Harness with LightRAG and json-render
+# Codex Task List: Mastra Text-to-SQL Agent Harness with LanceDB hybrid retrieval and json-render
 
 ## Goal
 
@@ -8,7 +8,7 @@ Implement a complete but focused Mastra agent harness for this flow:
 User prompt
   -> harness runtime loop
   -> intent/strategy step
-  -> ContextAgent retrieves schema/business context from LightRAG
+  -> ContextAgent retrieves schema context from the LanceDB hybrid search
   -> SQL Agent generates read-only SQL from retrieved context only
   -> SQL Safety validates and normalizes SQL
   -> backend executes SQL against MariaDB
@@ -24,11 +24,11 @@ The implementation must feel like Claude Code / Codex: the frontend should see w
 
 - Use Mastra for agents, tools, workflows, and harness orchestration.
 - Keep the existing `chat.service` streaming approach using AI SDK `pipeUIMessageStreamToResponse`.
-- Use LightRAG as the required schema/context retrieval source before SQL generation.
+- Use the LanceDB hybrid search as the required schema/context retrieval source before SQL generation.
 - Use existing environment variables only. Do not add new env vars.
 - Do not implement authentication for now.
 - Never pass database rows, samples, cell values, query results, or transformed query data to any LLM.
-- LLMs may see only user question, LightRAG context, schema metadata, column names/types, row count, SQL text, visualization intent, and transform expressions.
+- LLMs may see only user question, retrieved schema context, schema metadata, column names/types, row count, SQL text, visualization intent, and transform expressions.
 - SQL must be read-only and validated before execution.
 - Database execution must happen only in backend code.
 - Data transformation must happen only in deterministic backend ETL/JMESPath-like code.
@@ -45,7 +45,8 @@ AI_PROVIDER=openai                 # openai or anthropic
 AI_MODEL=gpt-4o-mini
 OPENAI_API_KEY=
 ANTHROPIC_API_KEY=
-LIGHTRAG_API_URL=http://localhost:9621
+LANCEDB_DIR=
+EMBEDDING_MODEL=text-embedding-3-large
 MARIADB_HOST=localhost
 MARIADB_PORT=3306
 MARIADB_USER=root
@@ -78,7 +79,7 @@ Find and document:
 - Current `chat.service` and `pipeUIMessageStreamToResponse` usage.
 - Current AI SDK/provider setup for `AI_PROVIDER`, `AI_MODEL`, `OPENAI_API_KEY`, and `ANTHROPIC_API_KEY`.
 - Current MariaDB connection code.
-- Current LightRAG endpoint usage if any.
+- Current schema-retrieval usage if any.
 - Current frontend stream/UI message format.
 - Test framework.
 
@@ -130,7 +131,7 @@ src/ai/mastra/
     visualization.agent.ts
     answer.agent.ts
   tools/
-    lightrag.tool.ts
+    lancedb-retrieve.tool.ts
     sql-generate.tool.ts
     sql-validate.tool.ts
     sql-execute.tool.ts
@@ -185,7 +186,7 @@ export type HarnessRunState = {
   currentTool?: string;
   status: 'running' | 'waiting' | 'done' | 'failed';
   question: string;
-  lightragContext?: RetrievedContext;
+  retrievalContext?: RetrievedContext;
   generatedSql?: string;
   validatedSql?: string;
   executionMeta?: QueryExecutionMeta;
@@ -236,7 +237,7 @@ export type TextToSqlVisualizationResponse = {
   };
   assumptions: string[];
   references: Array<{
-    source: 'lightrag';
+    source: 'lancedb';
     path?: string;
     title?: string;
     score?: number;
@@ -270,31 +271,36 @@ Acceptance:
 
 ---
 
-# Phase 3: LightRAG Context Retrieval
+# Phase 3: LanceDB Context Retrieval
 
-## Task 3.1: Implement LightRAG streaming client
+## Task 3.1: Implement the LanceDB hybrid-retrieval tool
 
-Implement `LightRagClientService` using:
+Implement `LancedbRetrievalTool` using:
 
 ```txt
-POST {LIGHTRAG_API_URL}/query/stream
+connect(LANCEDB_DIR) -> openTable('vdb_chunks')
+embed(query, EMBEDDING_MODEL)            # text-embedding-3-large, 3072-dim
+table.query()
+  .fullTextSearch(query)                 # BM25 over content
+  .nearestTo(queryVector)                # dense vector similarity
+  .rerank(RRFReranker)                   # Reciprocal Rank Fusion
+  .limit(topK)
 ```
 
-Payload:
+Params:
 
 ```ts
 {
   query: string;
-  mode: string;
-  stream: true;
-  include_references: true;
-  top_k: number;
+  topK?: number;
 }
 ```
 
-Use `LIGHTRAG_API_URL`, defaulting to `http://localhost:9621` if missing.
+Use `LANCEDB_DIR`, defaulting to `{cwd}/lancedb` if missing, and `EMBEDDING_MODEL`,
+defaulting to `text-embedding-3-large`. Fall back to pure vector search if the FTS
+index or hybrid query is unavailable.
 
-Consume streamed NDJSON and produce:
+Parse the top-k chunks into the schema whitelist and produce:
 
 ```ts
 export type RetrievedContext = {
@@ -318,23 +324,23 @@ export type RetrievedContext = {
 
 Acceptance:
 
-- Streams LightRAG progress events into harness timeline as **Retrieve Context**.
-- Handles NDJSON chunks safely.
-- Handles LightRAG failure with safe error response.
+- Streams retrieval progress events into harness timeline as **Retrieve Context**.
+- Handles the retrieved chunks safely.
+- Handles retrieval failure with safe error response.
 
 ## Task 3.2: Implement ContextAgent / `retrieve_context`
 
 ContextAgent responsibilities:
 
 1. Convert user question into schema-oriented retrieval query.
-2. Call LightRAG stream endpoint.
+2. Call the LanceDB hybrid-retrieval tool.
 3. Build `RetrievedContext`.
 4. Set `sufficient` based on whether enough schema/business context exists.
 5. Hand off to SQL Agent only when sufficient.
 
 Acceptance:
 
-- SQL generation is blocked when LightRAG context is insufficient.
+- SQL generation is blocked when the retrieved context is insufficient.
 - The UI timeline shows **Retrieve Context** with retrieved summary and reference paths.
 - Do not expose raw table names in final natural-language answer unless already allowed by existing product behavior.
 
@@ -359,7 +365,7 @@ Allowed LLM payload kinds:
 
 ```txt
 user_question
-lightrag_context
+retrieval_context
 schema_metadata
 column_metadata
 sql_text
@@ -428,10 +434,10 @@ Acceptance:
 SQL Agent may use:
 
 - User question.
-- LightRAG `contextSummary` and documents.
-- Schema metadata from LightRAG.
+- Retrieved `contextSummary` and documents.
+- Schema metadata from the LanceDB retrieval.
 - Column names/types.
-- Business metric definitions from LightRAG.
+- Business metric definitions from the retrieved context.
 
 SQL Agent must not use:
 
@@ -676,13 +682,13 @@ Rules:
 - Each iteration emits stream events.
 - Each LLM call passes data-boundary audit.
 - SQL validation failure can trigger SQL refinement.
-- LightRAG insufficiency can trigger clarification response.
+- Retrieval insufficiency can trigger clarification response.
 
 Acceptance:
 
 - Runtime has `runId`, `iteration`, `mode`, `currentAgent`, `currentTool`, and stop condition.
 - Tests verify retry/refine behavior.
-- It cannot skip LightRAG, SQL validation, or ETL.
+- It cannot skip retrieval, SQL validation, or ETL.
 
 ## Task 8.2: Implement Mastra tools
 
@@ -759,7 +765,7 @@ Frontend must receive events that allow it to show:
 - Current tool.
 - Agent text delta.
 - Tool started/completed.
-- LightRAG retrieval progress.
+- Schema retrieval progress.
 - SQL validation status.
 - SQL execution status without row data.
 - Transform status.
@@ -813,7 +819,7 @@ Acceptance:
 
 Safe failures:
 
-- LightRAG unavailable.
+- Retrieval unavailable.
 - Context insufficient.
 - SQL invalid after retry.
 - Database execution failed.
@@ -835,7 +841,7 @@ Acceptance:
 Audit these events:
 
 - Harness run started/completed/failed.
-- LightRAG context retrieval request metadata.
+- Schema context retrieval request metadata.
 - SQL generated.
 - SQL validation result.
 - SQL execution metadata only, no rows.
@@ -887,20 +893,20 @@ Add tests for:
 Add tests for:
 
 - Normal successful path.
-- LightRAG insufficient context path.
+- Insufficient retrieved context path.
 - SQL validation failure then retry/refine.
 - SQL validation failure after max retry.
 - Stream event sequence includes active agents.
 - Final response contains `visualization.spec` and `visualization.dataState`.
 
-## Task 12.3: LightRAG tests
+## Task 12.3: Retrieval tests
 
 Add tests for:
 
-- NDJSON streaming parser.
+- Hybrid search returns the schema whitelist.
 - References extraction.
 - `sufficient` true/false behavior.
-- LightRAG unavailable safe failure.
+- Vector-search fallback when FTS is unavailable.
 
 Acceptance:
 
@@ -924,7 +930,7 @@ Include:
 - Harness loop diagram.
 - Agent responsibilities.
 - No-row-data-to-LLM boundary.
-- LightRAG retrieval flow.
+- LanceDB retrieval flow.
 - SQL validation flow.
 - ETL/JMESPath flow.
 - json-render response contract.
@@ -941,7 +947,7 @@ docs/ai-agent-harness/local-dev.md
 Include:
 
 - Required existing env vars.
-- How to start LightRAG.
+- How to prepare the LanceDB retrieval table.
 - How to start backend.
 - Example prompt.
 - Example streamed event sequence.
@@ -953,7 +959,7 @@ Include:
 1. Repository reconnaissance.
 2. Mastra setup.
 3. Shared types and response contract.
-4. LightRAG streaming client and ContextAgent.
+4. LanceDB hybrid-retrieval tool and ContextAgent.
 5. LLM data-boundary guard and audit.
 6. SQL generation tool and SQL safety validator.
 7. MariaDB read-only executor with quarantined rows.
@@ -971,8 +977,8 @@ Include:
 The feature is complete when:
 
 - A user can ask a natural-language data question.
-- The harness retrieves schema/business context from LightRAG.
-- SQL is generated from LightRAG/schema context.
+- The harness retrieves schema context from the LanceDB hybrid search.
+- SQL is generated from the retrieved schema context.
 - SQL is validated as read-only before execution.
 - MariaDB executes the query in backend only.
 - Real database rows are quarantined and never passed to LLM.
@@ -980,7 +986,7 @@ The feature is complete when:
 - Backend ETL applies the transform to real rows and produces `visualization.dataState`.
 - Visualization Agent creates a valid json-render spec from metadata only.
 - Frontend receives streamed active-agent updates like Claude Code/Codex.
-- Final response includes answer, optional SQL metadata, LightRAG references, `visualization.spec`, `visualization.dataState`, and no-data-to-LLM audit summary.
+- Final response includes answer, optional SQL metadata, retrieval references, `visualization.spec`, `visualization.dataState`, and no-data-to-LLM audit summary.
 - No new environment variables are introduced.
 - Authentication is not added in this implementation.
 - Safety and harness tests pass.

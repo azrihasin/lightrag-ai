@@ -13,7 +13,7 @@ import { VisualizationAgentService } from './agents/visualization.agent';
 /** Subagent registry keys → friendly labels for reasoning blocks. */
 export const SUBAGENT_LABELS: Record<string, string> = {
   analyze_intent: 'Analyze intent',
-  retrieve_context: 'Retrieve schema context (LightRAG)',
+  retrieve_context: 'Retrieve schema context (LanceDB)',
   generate_sql: 'Generate SQL',
   validate_sql: 'Validate SQL',
   execute_sql: 'Execute SQL (MariaDB)',

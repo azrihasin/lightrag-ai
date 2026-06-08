@@ -50,36 +50,36 @@ export function splitReasoningText(text: string): ReasoningDisplay {
   return { title, body };
 }
 
-export interface LightragTiming {
-  /** Estimated tokens of the request sent to LightRAG (query + schema prompt). */
-  inputTokens: number;
-  /** Estimated tokens of the response streamed back from LightRAG. */
-  outputTokens: number;
-  /** Time to first response chunk, in ms; undefined when nothing streamed back. */
-  ttftMs?: number;
-  /** Total wall-clock duration of the LightRAG call, in ms. */
+export interface RetrievalTiming {
+  /** Number of schema chunks requested from LanceDB. */
+  topK: number;
+  /** Total wall-clock duration of the retrieval call, in ms. */
   durationMs: number;
+  /** Number of chunks returned by the dense vector search. */
+  vectorHits: number;
+  /** Number of chunks returned by the BM25 full-text search (0 on vector-only fallback). */
+  ftsHits: number;
 }
 
-// The backend embeds LightRAG token/timing metrics in the retrieve-context block
-// as an invisible `<!--lightrag-timing:{…}-->` comment (see chat.service.ts).
-const LIGHTRAG_TIMING_RE = /<!--lightrag-timing:(\{[\s\S]*?\})-->/;
+// The backend embeds retrieval counts/timing metrics in the retrieve-context
+// block as an invisible `<!--retrieval-timing:{…}-->` comment (see chat.service.ts).
+const RETRIEVAL_TIMING_RE = /<!--retrieval-timing:(\{[\s\S]*?\})-->/;
 
 /**
- * Lift the LightRAG token/timing metrics out of a reasoning body. Returns the
+ * Lift the retrieval counts/timing metrics out of a reasoning body. Returns the
  * parsed metrics plus the body with the comment stripped, or null when the body
  * carries no metrics. Call this first so the stripped `rest` flows through the
  * code-block / title parsers without the comment polluting them.
  */
-export function extractLightragTiming(
+export function extractRetrievalTiming(
   text: string,
-): { timing: LightragTiming; rest: string } | null {
+): { timing: RetrievalTiming; rest: string } | null {
   const src = text ?? "";
-  const m = LIGHTRAG_TIMING_RE.exec(src);
+  const m = RETRIEVAL_TIMING_RE.exec(src);
   if (!m) return null;
   const rest = (src.slice(0, m.index) + src.slice(m.index + m[0].length)).trim();
   try {
-    return { timing: JSON.parse(m[1]) as LightragTiming, rest };
+    return { timing: JSON.parse(m[1]) as RetrievalTiming, rest };
   } catch {
     return null;
   }
@@ -96,7 +96,7 @@ export interface ReasoningCodeBlock {
 
 /**
  * Pull the first fenced code block out of a reasoning body. The backend appends
- * the raw LightRAG schema JSON as a ```json fence on the retrieve-context block;
+ * the raw schema JSON as a ```json fence on the retrieve-context block;
  * we lift it out so the UI can render it as a real codeblock — and so the source
  * parser never mistakes the JSON's commas for a comma-separated table list.
  * Returns null when the body has no fence.
@@ -108,7 +108,7 @@ export function extractCodeBlock(body: string): ReasoningCodeBlock | null {
     const rest = (text.slice(0, closed.index) + text.slice(closed.index + closed[0].length)).trim();
     return { lang: closed[1] || "json", code: closed[2].trim(), rest };
   }
-  // While the LightRAG response is still streaming, the fence has no closing
+  // While the retrieval response is still streaming, the fence has no closing
   // ``` yet — treat everything after the opening fence as the (growing) code so
   // it renders as a codeblock live instead of as raw prose.
   const open = /```(\w*)\n([\s\S]*)$/.exec(text);
@@ -133,7 +133,7 @@ export interface ReasoningSources {
  * "Relevant sources:" label is dropped — the badges speak for themselves — but
  * any meaningful lead-in before it (e.g. a recovery note) is preserved.
  *
- * The backend already emits table names only (parsed from LightRAG's JSON
+ * The backend already emits table names only (parsed from the JSON
  * whitelist), so this just splits the list — no column filtering needed here.
  */
 export function extractSources(body: string): ReasoningSources | null {

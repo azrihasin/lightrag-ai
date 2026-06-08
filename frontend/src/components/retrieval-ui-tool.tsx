@@ -38,7 +38,7 @@ function sourceLabel(filePath: string): string {
   return filePath.replace(/\\/g, "/").split("/").pop() ?? filePath;
 }
 
-const LightragUiRetrievalToolImpl: ToolCallMessagePartComponent = ({
+const RetrievalUiToolImpl: ToolCallMessagePartComponent = ({
   toolCallId,
   result,
   status,
@@ -56,7 +56,7 @@ const LightragUiRetrievalToolImpl: ToolCallMessagePartComponent = ({
         <ToolFallbackPostText toolCallId={toolCallId} />
       )}
 
-      {/* Sources cited by LightRAG */}
+      {/* Sources of the retrieved schema chunks */}
       {!isCancelled && sources.length > 0 && (
         <div className="border-t border-dashed pt-2 flex flex-col gap-1.5">
           <p className="text-xs font-medium text-muted-foreground">
@@ -89,5 +89,5 @@ const LightragUiRetrievalToolImpl: ToolCallMessagePartComponent = ({
   );
 };
 
-export const LightragUiRetrievalTool = memo(LightragUiRetrievalToolImpl);
-LightragUiRetrievalTool.displayName = "LightragUiRetrievalTool";
+export const RetrievalUiTool = memo(RetrievalUiToolImpl);
+RetrievalUiTool.displayName = "RetrievalUiTool";

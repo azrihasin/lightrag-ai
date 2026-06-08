@@ -6,7 +6,7 @@ import * as lancedb from '@lancedb/lancedb';
 import type { ConvertVdbDto } from './dto/convert-vdb.dto';
 
 /**
- * Shape of a single entry inside LightRAG's NanoVectorDB `vdb_chunks.json` `data` array.
+ * Shape of a single entry inside the embeddings source `vdb_chunks.json` `data` array.
  * The actual embeddings live in the top-level base64 `matrix`, row-aligned with `data`.
  */
 interface VdbChunkItem {

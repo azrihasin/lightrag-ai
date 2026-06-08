@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowDownIcon, ArrowUpIcon, GaugeIcon } from "lucide-react";
+import { DatabaseIcon, GaugeIcon, SearchIcon } from "lucide-react";
 import type { FC } from "react";
 import {
   Tooltip,
@@ -8,13 +8,13 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import type { LightragTiming } from "@/lib/reasoning-format";
+import type { RetrievalTiming } from "@/lib/reasoning-format";
 
 // Modelled on assistant-ui's MessageTiming badge
 // (https://www.assistant-ui.com/docs/ui/message-timing): a compact font-mono
-// trigger that reveals the full breakdown in a popover. Here it reports the
-// estimated input/output tokens and timing of the LightRAG retrieval call rather
-// than the whole-message stream timing, since those tokens are LightRAG-specific.
+// trigger that reveals the full breakdown in a popover. Here it reports the hit
+// counts and timing of the LanceDB hybrid-retrieval call rather than the
+// whole-message stream timing.
 
 const formatMs = (ms: number | undefined): string => {
   if (ms === undefined) return "—";
@@ -22,7 +22,7 @@ const formatMs = (ms: number | undefined): string => {
   return `${(ms / 1000).toFixed(2)}s`;
 };
 
-const formatTokens = (n: number): string => n.toLocaleString();
+const formatCount = (n: number): string => n.toLocaleString();
 
 const Row: FC<{ label: string; value: string }> = ({ label, value }) => (
   <div className="flex items-center justify-between gap-4">
@@ -31,25 +31,18 @@ const Row: FC<{ label: string; value: string }> = ({ label, value }) => (
   </div>
 );
 
-export const LightragTimingBadge: FC<{
-  timing: LightragTiming;
+export const RetrievalTimingBadge: FC<{
+  timing: RetrievalTiming;
   className?: string;
   side?: "top" | "right" | "bottom" | "left";
 }> = ({ timing, className, side = "top" }) => {
-  // Output tokens per second over the call's wall-clock duration. LightRAG
-  // reports no usage, so this mirrors the estimate used for the token counts.
-  const tokensPerSecond =
-    timing.durationMs > 0
-      ? timing.outputTokens / (timing.durationMs / 1000)
-      : undefined;
-
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <button
           type="button"
-          data-slot="lightrag-timing-trigger"
-          aria-label="LightRAG token usage"
+          data-slot="retrieval-timing-trigger"
+          aria-label="LanceDB retrieval hits"
           className={cn(
             "flex items-center gap-1.5 rounded-md p-1 font-mono text-xs tabular-nums text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground",
             className,
@@ -57,32 +50,27 @@ export const LightragTimingBadge: FC<{
         >
           <GaugeIcon className="size-3 shrink-0" />
           <span className="flex items-center gap-0.5">
-            <ArrowUpIcon className="size-3 shrink-0" />
-            {formatTokens(timing.inputTokens)}
+            <DatabaseIcon className="size-3 shrink-0" />
+            {formatCount(timing.vectorHits)}
           </span>
           <span className="flex items-center gap-0.5">
-            <ArrowDownIcon className="size-3 shrink-0" />
-            {formatTokens(timing.outputTokens)}
+            <SearchIcon className="size-3 shrink-0" />
+            {formatCount(timing.ftsHits)}
           </span>
         </button>
       </TooltipTrigger>
       <TooltipContent
         side={side}
         sideOffset={8}
-        data-slot="lightrag-timing-popover"
+        data-slot="retrieval-timing-popover"
         className="rounded-lg border bg-popover px-3 py-2 text-popover-foreground shadow-md [&_span>svg]:hidden!"
       >
         <div className="grid min-w-44 gap-1.5 text-xs">
-          <div className="mb-0.5 font-medium text-foreground">LightRAG retrieval</div>
-          <Row label="Input tokens" value={formatTokens(timing.inputTokens)} />
-          <Row label="Output tokens" value={formatTokens(timing.outputTokens)} />
-          {timing.ttftMs !== undefined && (
-            <Row label="First chunk" value={formatMs(timing.ttftMs)} />
-          )}
+          <div className="mb-0.5 font-medium text-foreground">LanceDB hybrid retrieval</div>
+          <Row label="Vector hits" value={formatCount(timing.vectorHits)} />
+          <Row label="Full-text hits" value={formatCount(timing.ftsHits)} />
+          <Row label="Top K" value={formatCount(timing.topK)} />
           <Row label="Total" value={formatMs(timing.durationMs)} />
-          {tokensPerSecond !== undefined && (
-            <Row label="Speed" value={`${tokensPerSecond.toFixed(1)} tok/s`} />
-          )}
         </div>
       </TooltipContent>
     </Tooltip>

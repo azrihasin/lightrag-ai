@@ -12,7 +12,7 @@ export class LanceDbController {
   @Post('convert')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Convert LightRAG vdb_chunks.json embeddings into a local LanceDB table',
+    summary: 'Convert the vdb_chunks.json embeddings source into a local LanceDB table',
   })
   @ApiResponse({ status: 200, description: 'Conversion completed' })
   @ApiResponse({ status: 400, description: 'Invalid request or source file' })

@@ -20,9 +20,9 @@ import {
 import { StreamdownText } from "@/components/assistant-ui/streamdown-text";
 import { Reasoning } from "@/components/assistant-ui/reasoning";
 import { Sources } from "@/components/assistant-ui/sources";
-import { splitReasoningText, extractSources, extractCodeBlock, extractLightragTiming } from "@/lib/reasoning-format";
+import { splitReasoningText, extractSources, extractCodeBlock, extractRetrievalTiming } from "@/lib/reasoning-format";
 import { CodeBlock } from "@/components/assistant-ui/code-block";
-import { LightragTimingBadge } from "@/components/assistant-ui/lightrag-timing";
+import { RetrievalTimingBadge } from "@/components/assistant-ui/retrieval-timing";
 import { Badge } from "@/components/ui/badge";
 import { DatabaseIcon } from "lucide-react";
 import { ToolFallback } from "@/components/assistant-ui/tool-fallback";
@@ -118,12 +118,12 @@ const NoOp = () => null;
 // lib/reasoning-format.ts.
 const GhostReasoning: ReasoningMessagePartComponent = ({ text, status }) => {
   const active = status.type === "running";
-  // The retrieve-context block carries the estimated LightRAG token/timing
-  // metrics as an invisible comment — lift those out first so the comment never
-  // reaches the code-block / title parsers below, then work on the stripped text.
-  const timing = useMemo(() => extractLightragTiming(text), [text]);
+  // The retrieve-context block carries the retrieval counts/timing metrics as an
+  // invisible comment — lift those out first so the comment never reaches the
+  // code-block / title parsers below, then work on the stripped text.
+  const timing = useMemo(() => extractRetrievalTiming(text), [text]);
   const baseText = timing ? timing.rest : text;
-  // The retrieve-context block carries the raw LightRAG response as a fenced
+  // The retrieve-context block carries the raw retrieved schema as a fenced
   // ```json block — streamed live as it arrives and possibly sitting BEFORE the
   // final outcome heading. Lift it out of the full block text first (so it
   // survives the running→outcome heading flip and its commas don't pollute the
@@ -161,7 +161,7 @@ const GhostReasoning: ReasoningMessagePartComponent = ({ text, status }) => {
             )}
             {codeBlock && (
               <CodeBlock
-                label="LightRAG Schema"
+                label="Schema Retrieval"
                 code={codeBlock.code}
                 meta={codeBlock.lang}
                 bodyClassName="max-h-72"
@@ -169,7 +169,7 @@ const GhostReasoning: ReasoningMessagePartComponent = ({ text, status }) => {
             )}
             {timing && (
               <div className="flex">
-                <LightragTimingBadge timing={timing.timing} />
+                <RetrievalTimingBadge timing={timing.timing} />
               </div>
             )}
           </div>

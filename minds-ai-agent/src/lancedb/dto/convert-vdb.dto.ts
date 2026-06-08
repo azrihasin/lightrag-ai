@@ -8,7 +8,7 @@ export const ConvertVdbSchema = z.object({
   sourceFile: z
     .string()
     .optional()
-    .describe('Absolute or repo-relative path to the LightRAG vdb_chunks.json file.'),
+    .describe('Absolute or repo-relative path to the embeddings source vdb_chunks.json file.'),
   dbDir: z
     .string()
     .optional()

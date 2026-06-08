@@ -21,15 +21,15 @@ The full task spec is in:
 | `safety/audit.service.ts` | Per-run audit log, buildFinalAuditSummary for response |
 | `visualization/component-allowlist.ts` | JSON_RENDER_COMPONENT_ALLOWLIST constant + isAllowedComponent() |
 | `visualization/json-render.schema.ts` | JsonRenderSchemaService: validates spec against allowlist, strips injection fields, repair() method |
-| `tools/lightrag.tool.ts` | LightragHarnessTool — POST /query/stream, NDJSON parser, returns RetrievedContext |
+| `tools/lancedb-retrieve.tool.ts` | LancedbRetrievalTool — LanceDB hybrid search (vector + BM25/RRF), returns the schema whitelist JSON |
 | `tools/sql-validate.tool.ts` | SqlValidateHarnessTool — wraps SqlSafetyService as a Mastra tool |
 | `tools/sql-execute.tool.ts` | SqlExecuteHarnessTool — re-validates before execution, quarantines rows, returns QueryExecutionMeta only |
 | `tools/transform-plan.tool.ts` | TransformPlanTool — infers JMESPath expression from column metadata (no rows) |
 | `tools/transform-execute.tool.ts` | TransformExecuteService — applies JMESPath to QuarantinedRows.rows, produces dataState |
 | `tools/json-render.tool.ts` | JsonRenderTool — builds spec from column metadata + intent, validates against allowlist |
 | `agents/intent.agent.ts` | IntentAgentService — extracts intent, schemaQuery, visualizationIntent from user question |
-| `agents/context.agent.ts` | ContextAgentService — calls LightragHarnessTool, returns RetrievedContext |
-| `agents/sql.agent.ts` | SqlAgentService — generates SELECT SQL from LightRAG context only, supports retry with failReason |
+| `agents/context.agent.ts` | ContextAgentService — calls LancedbRetrievalTool, returns RetrievedContext |
+| `agents/sql.agent.ts` | SqlAgentService — generates SELECT SQL from retrieved schema context only, supports retry with failReason |
 | `agents/transform.agent.ts` | TransformAgentService — generates JMESPath from column metadata (no rows) |
 | `agents/visualization.agent.ts` | VisualizationAgentService — delegates to JsonRenderTool, validates/repairs spec |
 | `agents/answer.agent.ts` | AnswerAgentService — writes natural-language answer from metadata only |
@@ -76,23 +76,23 @@ Create these test files:
 
 **`src/ai/mastra/harness/data-agent-harness.service.spec.ts`** (integration-style with mocks)
 - Test: normal successful path emits all stream events
-- Test: insufficient LightRAG context returns safe error response
+- Test: insufficient retrieved context returns safe error response
 - Test: SQL validation failure triggers retry up to MAX_SQL_RETRIES
 - Test: SQL failure after max retry returns safe error response
 - Test: final response contains visualization.spec and visualization.dataState
 - Test: ETL does NOT call any LLM
 
-**`src/ai/mastra/tools/lightrag.tool.spec.ts`**
-- Test: NDJSON streaming parser produces correct RetrievedContext
-- Test: sufficient=false when answer < 100 chars
-- Test: handles LightRAG HTTP error safely
-- Test: handles fetch exception safely
+**`src/ai/mastra/tools/lancedb-retrieve.tool.spec.ts`**
+- Test: hybrid search returns the schema whitelist JSON
+- Test: empty schema when no chunks match
+- Test: falls back to vector search when FTS is unavailable
+- Test: handles retrieval exceptions safely
 
 ### Phase 13 — Docs
 
 Create:
-- `docs/ai-agent-harness/architecture.md` — harness loop diagram, agent responsibilities, LLM data boundary, LightRAG flow, SQL safety flow, ETL/JMESPath flow, json-render contract, streaming event contract
-- `docs/ai-agent-harness/local-dev.md` — env vars, how to start LightRAG, how to start backend, example prompt, example SSE event sequence
+- `docs/ai-agent-harness/architecture.md` — harness loop diagram, agent responsibilities, LLM data boundary, retrieval flow, SQL safety flow, ETL/JMESPath flow, json-render contract, streaming event contract
+- `docs/ai-agent-harness/local-dev.md` — env vars, how to prepare the LanceDB table, how to start backend, example prompt, example SSE event sequence
 
 ---
 

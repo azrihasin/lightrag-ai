@@ -127,7 +127,7 @@ function AgentToolGroup({
 
 // ─── Retrieve Context — rich streaming display ────────────────────────────────
 
-type LightRagDocument = {
+type RetrievedDocument = {
   id: string;
   title: string;
   content: string;
@@ -175,11 +175,11 @@ function RetrieveContextStream({
   const out = parseJson(result);
 
   const documents = Array.isArray(out.documents)
-    ? (out.documents as LightRagDocument[])
+    ? (out.documents as RetrievedDocument[])
     : [];
 
-  const answer = documents.find((d) => d.id === "lightrag-answer");
-  const refs = documents.filter((d) => d.id !== "lightrag-answer");
+  const answer = documents.find((d) => d.id === "retrieval-answer");
+  const refs = documents.filter((d) => d.id !== "retrieval-answer");
 
   if (!answer && refs.length === 0) {
     if (!streamingText) return null;

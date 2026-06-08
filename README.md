@@ -1,1 +1,1 @@
-# lightrag-ai
+# minds-ai
