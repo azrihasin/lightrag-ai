@@ -79,7 +79,7 @@ const ToolFallbackWithAgent: ToolCallMessagePartComponent = (props) => (
 
 // ─── API URL ──────────────────────────────────────────────────────────────────
 
-const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:3000/api/chat";
+const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:3001/api/chat";
 
 // ─── Backend thread list adapter (singleton) ──────────────────────────────────
 

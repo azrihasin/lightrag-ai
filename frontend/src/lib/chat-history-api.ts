@@ -1,9 +1,9 @@
-const BASE = (import.meta.env.VITE_API_URL ?? "http://localhost:3000/api/chat").replace(
+const BASE = (import.meta.env.VITE_API_URL ?? "http://localhost:3001/api/chat").replace(
   /\/chat$/,
   "/chat-history",
 );
 
-const CHAT_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:3000/api/chat";
+const CHAT_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:3001/api/chat";
 
 // ─── Legacy session types (existing /api/chat-history endpoints) ──────────────
 

@@ -5,7 +5,7 @@ import { Readable } from "node:stream";
 const app = express();
 const PORT = process.env.PORT ?? 3001;
 const BACKEND_CHAT_URL =
-  process.env.CHAT_URL ?? "http://localhost:3000/api/chat";
+  process.env.CHAT_URL ?? "http://localhost:3001/api/chat";
 
 app.use(cors());
 app.use(express.json());

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { InjectPinoLogger, PinoLogger } from 'nestjs-pino';
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
@@ -19,7 +19,7 @@ interface ChunkRow {
 }
 
 @Injectable()
-export class LancedbRetrievalTool {
+export class LancedbRetrievalTool implements OnModuleInit {
   // Connection, table handle and embedding model are resolved once on the first
   // call and reused across invocations — opening the dataset and constructing the
   // embedding client on every retrieval would be wasteful.
@@ -29,6 +29,33 @@ export class LancedbRetrievalTool {
   constructor(
     @InjectPinoLogger(LancedbRetrievalTool.name) private readonly logger: PinoLogger,
   ) {}
+
+  /**
+   * Warm the table handle and FTS index at startup so no user request ever races
+   * the one-time index build. Without this, the first retrieval after a process
+   * start triggers the FTS build inline; the hybrid query then runs against a
+   * table snapshot that predates the build's committed dataset version, throws,
+   * and degrades to vector-only (or empty). Building here — before the server
+   * serves traffic — makes the very first real query hit a ready, index-aware handle.
+   */
+  async onModuleInit(): Promise<void> {
+    try {
+      await this.warmUp();
+      this.logger.info('LanceDB retrieval warmed up (table + FTS index ready)');
+    } catch (err) {
+      // Non-fatal: fall back to lazy initialisation on the first real call.
+      this.logger.warn({ err }, 'LanceDB warm-up failed; retrieval will lazy-init on first call');
+    }
+  }
+
+  private async warmUp(): Promise<void> {
+    const table = await this.getTable();
+    await this.ensureFtsIndex(table);
+    // The handle opened before the build won't see the dataset version that the
+    // index build committed; reopen so the first query uses an index-aware handle.
+    this.tablePromise = this.openTable();
+    await this.tablePromise;
+  }
 
   asTool() {
     return createTool({
@@ -160,10 +187,15 @@ export class LancedbRetrievalTool {
   /** Connect to the LanceDB directory once and open the `vdb_chunks` table. */
   private getTable(): Promise<lancedb.Table> {
     if (!this.tablePromise) {
-      const dbDir = process.env.LANCEDB_DIR ?? path.join(process.cwd(), 'lancedb');
-      this.tablePromise = lancedb.connect(dbDir).then((db) => db.openTable(TABLE_NAME));
+      this.tablePromise = this.openTable();
     }
     return this.tablePromise;
+  }
+
+  /** Open a fresh `vdb_chunks` table handle from the configured LanceDB directory. */
+  private openTable(): Promise<lancedb.Table> {
+    const dbDir = process.env.LANCEDB_DIR ?? path.join(process.cwd(), 'lancedb');
+    return lancedb.connect(dbDir).then((db) => db.openTable(TABLE_NAME));
   }
 
   /**
@@ -186,13 +218,18 @@ export class LancedbRetrievalTool {
 
   /**
    * Embed the query with the same OpenAI-compatible model that produced the stored
-   * vectors (text-embedding-3-large, 3072-dim), via the existing createOpenAI
-   * baseURL/apiKey pattern.
+   * vectors (text-embedding-3-large, 3072-dim).
+   *
+   * The embedding call MUST target an embedding-capable endpoint, which is NOT the
+   * chat LLM host: the project's LLM_BINDING_HOST points at DeepSeek, which has no
+   * `/embeddings` route (it returns 404). So the embedding host/key are resolved
+   * independently — EMBEDDING_BINDING_HOST / EMBEDDING_API_KEY — and default to
+   * OpenAI rather than reusing the chat host.
    */
   private async embedQuery(query: string): Promise<number[]> {
     const provider = createOpenAI({
-      baseURL: process.env.LLM_BINDING_HOST ?? 'https://api.openai.com/v1',
-      apiKey: process.env.OPENAI_API_KEY,
+      baseURL: process.env.EMBEDDING_BINDING_HOST ?? 'https://api.openai.com/v1',
+      apiKey: process.env.EMBEDDING_API_KEY ?? process.env.OPENAI_API_KEY,
     });
     const model = process.env.EMBEDDING_MODEL ?? DEFAULT_EMBEDDING_MODEL;
     const { embedding } = await embed({ model: provider.textEmbeddingModel(model), value: query });
