@@ -181,7 +181,7 @@ export function createBackendHistoryAdapter(
                 // on demand.
                 const meta = m.metadata ?? {};
 
-                // Database table names surfaced from the schema retrieval are
+                // Database table names surfaced from the LightRAG retrieval are
                 // persisted on the turn; replay them as `source-url` parts so the
                 // muted source chips reappear on reload. AISDKMessageConverter maps
                 // `source-url` → the internal `source` part ChatPage renders.

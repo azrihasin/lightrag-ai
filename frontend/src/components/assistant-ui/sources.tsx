@@ -8,7 +8,7 @@ export const Sources: SourceMessagePartComponent = ({ url, title }) => {
   const label = title || url;
   const isLink = /^https?:\/\//i.test(url ?? "");
 
-  // Muted variant: database table names surfaced from the schema retrieval are
+  // Muted variant: database table names surfaced from the LightRAG retrieval are
   // not navigable links, so render them as a static muted chip with a table icon.
   if (!isLink) {
     return (

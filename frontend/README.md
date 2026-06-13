@@ -2,23 +2,24 @@
 
 This template provides a minimal setup to get React working in Vite with HMR.
 
-## Run with the LanceDB hybrid-retrieval backend (Windows)
+## Run with LightRAG (Windows)
 
-From the repository root, start the backend API and this front end in separate
-terminals (adjust paths if your clone is elsewhere). Schema retrieval is served
-locally from the LanceDB `vdb_chunks` table by the backend — there is no separate
-retrieval server to start.
+From the repository root, start the API and both front ends in separate terminals (adjust paths if your clone is elsewhere). See also the [root README](../README.md#local-development-windows-three-terminals) and [LightRAG Server README](../lightrag/api/README.md#local-development-windows-three-terminals).
 
 **This app** (`frontend`):
 
 ```cmd
-cd frontend && npm run dev
+cd /d C:\Users\User\Desktop\lightrag-langchain\frontend && npm run dev
 ```
 
-**Backend API** (`minds-ai-agent`) — run in another terminal:
+**API + `lightrag_webui`** — run in two other terminals:
 
 ```cmd
-cd minds-ai-agent && npm run start:dev
+cd /d C:\Users\User\Desktop\lightrag-langchain && .venv\Scripts\activate && lightrag-server
+```
+
+```cmd
+cd /d C:\Users\User\Desktop\lightrag-langchain\lightrag_webui && bun run dev
 ```
 
 ## Chat API

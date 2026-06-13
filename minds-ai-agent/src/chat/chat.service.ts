@@ -217,7 +217,7 @@ export class ChatService {
    * presses Stop, the browser aborts the fetch and the socket closes before the
    * response has finished — that fires `res`'s `close` event with
    * `writableEnded === false`. We abort the controller then, which propagates
-   * down to the agent loop and the in-flight retrieval so all backend work
+   * down to the agent loop and the in-flight LightRAG fetch so all backend work
    * (and its cost) stops immediately. A normal completion ends the response
    * first, so the `writableEnded` guard prevents a false abort.
    */
@@ -379,7 +379,7 @@ export class ChatService {
 
     const run = createRunContext();
     const reasoningParts: Array<{ key: string; text: string }> = [];
-    // Database table names surfaced from the retrieval, streamed to the
+    // Database table names surfaced from the LightRAG retrieval, streamed to the
     // UI as muted `source` chips (instead of dumping the full retrieved context).
     // `emittedTables` dedupes across retries; `tableNames` is persisted for reload.
     const emittedTables = new Set<string>();
@@ -389,13 +389,13 @@ export class ChatService {
     // The most recent unresolved failure. While set, each following step is
     // worded as a recovery (a bridge) and a successful execute_sql clears it.
     let recovery: RecoveryContext | null = null;
-    // Retrieval live-stream state. As the retrieve_context tool streams the
-    // assembled schema, we open a ```json fence inside its reasoning block and
-    // append each chunk. `retrievalStreamed` records that this happened so the
+    // LightRAG live-stream state. As the retrieve_context tool streams the raw
+    // endpoint response, we open a ```json fence inside its reasoning block and
+    // append each chunk. `lightragStreamed` records that this happened so the
     // block's close step does NOT re-emit the fence to the live UI (it is already
     // there); the persisted copy still carries it for history reload.
-    let retrievalFenceOpen = false;
-    let retrievalStreamed = false;
+    let lightragFenceOpen = false;
+    let lightragStreamed = false;
     let finalText = '';
     // Authoritative final answer, read from the master agent's aggregate output
     // after the stream completes. Used only as a fallback for the reconstructed
@@ -418,33 +418,33 @@ export class ChatService {
     try {
       const agent = this.analyticsAgentService.getAgent();
 
-      // Live sink: the retrieve_context tool streams the assembled schema here.
-      // We append each chunk into a ```json fence inside the step's open reasoning
-      // block so the user watches the retrieved schema build live, then close the
-      // fence when retrieval ends.
-      run.onRetrievalChunk = (delta: string) => {
+      // Live sink: the retrieve_context tool streams the raw LightRAG response
+      // here chunk-by-chunk. We append each chunk into a ```json fence inside the
+      // step's open reasoning block so the user watches the endpoint response
+      // build live, then close the fence when the stream ends.
+      run.onLightragChunk = (delta: string) => {
         const id = openBlocks.get('retrieve_context');
         if (!id) return; // block not open yet — fall back to the close-step fence
-        retrievalStreamed = true;
+        lightragStreamed = true;
         let out = delta;
-        if (!retrievalFenceOpen) {
-          retrievalFenceOpen = true;
+        if (!lightragFenceOpen) {
+          lightragFenceOpen = true;
           out = `\n\n\`\`\`json\n${delta}`;
         }
         writer.write({ type: 'reasoning-delta', id, delta: out });
       };
-      run.onRetrievalEnd = () => {
-        if (!retrievalFenceOpen) return;
+      run.onLightragEnd = () => {
+        if (!lightragFenceOpen) return;
         const id = openBlocks.get('retrieve_context');
         if (id) writer.write({ type: 'reasoning-delta', id, delta: '\n```' });
-        retrievalFenceOpen = false;
+        lightragFenceOpen = false;
       };
 
       // Run the whole stream consumption inside the blackboard context so every
       // subagent tool invocation shares this run's AnalyticsRunContext.
       await analyticsRunStore.run(run, async () => {
         // Pass the abort signal so a client Stop tears down the agent loop: the
-        // master agent stops delegating, and the in-flight retrieval aborts.
+        // master agent stops delegating, and the in-flight LightRAG fetch aborts.
         const agentResult = await agent.stream(userText, { maxSteps: 40, abortSignal: signal });
 
         for await (const rawChunk of agentResult.fullStream) {
@@ -478,7 +478,7 @@ export class ChatService {
               recovery,
             });
             recovery = this.nextRecovery(recovery, resolveStepKey(key), display);
-            this.closeReasoning(writer, key, display, openBlocks, reasoningParts, run, retrievalStreamed);
+            this.closeReasoning(writer, key, display, openBlocks, reasoningParts, run, lightragStreamed);
             this.emitTableSources(writer, key, run, emittedTables, tableNames);
             continue;
           }
@@ -563,12 +563,12 @@ export class ChatService {
           recovery,
         });
         recovery = this.nextRecovery(recovery, resolveStepKey(key), display);
-        const metricsMd = this.retrievalMetricsComment(key, run);
+        const metricsMd = this.lightragMetricsComment(key, run);
         const persistMd = renderReasoningMarkdown(display) + this.retrievedContextBlock(key, run) + metricsMd;
         // Skip re-emitting the fence to the live UI when it was already streamed
         // in (see closeReasoning); the persisted copy keeps it for reload.
         const liveMd =
-          retrievalStreamed && resolveStepKey(key) === 'retrieve_context'
+          lightragStreamed && resolveStepKey(key) === 'retrieve_context'
             ? renderReasoningMarkdown(display) + metricsMd
             : persistMd;
         writer.write({ type: 'reasoning-delta', id, delta: `\n\n${liveMd}` });
@@ -678,15 +678,15 @@ export class ChatService {
     openBlocks: Map<string, string>,
     reasoningParts: Array<{ key: string; text: string }>,
     run: AnalyticsRunContext,
-    retrievalStreamed: boolean,
+    lightragStreamed: boolean,
   ): void {
     if (!openBlocks.has(key)) this.openReasoning(writer, key, openBlocks, null);
     const id = openBlocks.get(key) ?? `reasoning-${key}`;
-    // Invisible counts/timing metrics carried in both the live and persisted copy
+    // Invisible token/timing metrics carried in both the live and persisted copy
     // (retrieve_context only) so the message-timing badge renders during the
     // stream and again on history reload.
-    const metricsMd = this.retrievalMetricsComment(key, run);
-    // The persisted copy always carries the raw schema JSON (retrieve_context
+    const metricsMd = this.lightragMetricsComment(key, run);
+    // The persisted copy always carries the raw LightRAG JSON (retrieve_context
     // only) as a fenced codeblock so a history reload renders it.
     const persistMd = renderReasoningMarkdown(display) + this.retrievedContextBlock(key, run) + metricsMd;
     // When the response was already streamed live into this block as a codeblock,
@@ -694,7 +694,7 @@ export class ChatService {
     // fence would duplicate it. The frontend lifts the codeblock out of the full
     // block text, so its position (streamed earlier vs. appended) does not matter.
     const liveMd =
-      retrievalStreamed && resolveStepKey(key) === 'retrieve_context'
+      lightragStreamed && resolveStepKey(key) === 'retrieve_context'
         ? renderReasoningMarkdown(display) + metricsMd
         : persistMd;
     writer.write({ type: 'reasoning-delta', id, delta: `\n\n${liveMd}` });
@@ -704,7 +704,7 @@ export class ChatService {
   }
 
   /**
-   * For the retrieve_context step, stream the relevant database table
+   * For the LightRAG retrieve_context step, stream the relevant database table
    * names as `source-url` parts (assistant-ui renders them as muted source
    * chips). The full retrieved context is intentionally NOT sent to the UI — only
    * the table names are surfaced. Dedupes across retries via `emitted` and records
@@ -733,7 +733,7 @@ export class ChatService {
   }
 
   /**
-   * For the retrieve_context step, render the raw schema JSON as a
+   * For the retrieve_context step, render the raw LightRAG schema JSON as a
    * fenced ```json block to append to the reasoning block body. The UI shows it
    * as a codeblock beneath the table-name badges. Pretty-prints when the context
    * parses as JSON; otherwise emits the raw text verbatim. Returns '' for other
@@ -753,21 +753,21 @@ export class ChatService {
   }
 
   /**
-   * Encode the retrieval counts/timing metrics (retrieve_context only) as an
+   * Encode the LightRAG token/timing metrics (retrieve_context only) as an
    * invisible HTML comment appended to the reasoning block. ReactMarkdown ignores
    * it; the frontend parses the comment out and renders a message-timing-style
-   * badge showing the hit counts and call timing. Returns '' for other steps or
-   * when no metrics were recorded.
+   * badge showing the input/output token estimate and call timing. Returns '' for
+   * other steps or when no metrics were recorded.
    */
-  private retrievalMetricsComment(key: string, run: AnalyticsRunContext): string {
+  private lightragMetricsComment(key: string, run: AnalyticsRunContext): string {
     if (resolveStepKey(key) !== 'retrieve_context') return '';
-    const metrics = run.retrievalMetrics;
+    const metrics = run.lightragMetrics;
     if (!metrics) return '';
-    return `\n\n<!--retrieval-timing:${JSON.stringify(metrics)}-->`;
+    return `\n\n<!--lightrag-timing:${JSON.stringify(metrics)}-->`;
   }
 
   /**
-   * Pull database table names out of the raw schema context. Prefers
+   * Pull database table names out of the raw LightRAG schema context. Prefers
    * strong signals — KG entity rows typed `TABLE`, `CREATE TABLE` declarations,
    * and explicit `Table:` labels — and only falls back to any backticked
    * identifier when none are present. Capped and deduped to keep the chip list
@@ -779,7 +779,7 @@ export class ChatService {
     const strong = new Set<string>();
     const fallback = new Set<string>();
 
-    // KG-style entity rows typed as a table, e.g. `"sales_orders","TABLE",…`.
+    // LightRAG KG entity rows typed as a table, e.g. `"sales_orders","TABLE",…`.
     for (const m of context.matchAll(
       /["'`]?([A-Za-z_][\w$]*(?:\.[A-Za-z_][\w$]*)?)["'`]?\s*,\s*["'`]?table["'`]?/gi,
     ))

@@ -19,7 +19,7 @@ const sqlOutputSchema = z.object({
  */
 export const SQL_SCHEMA_GROUNDING_RULES: string[] = [
   'STRICT SCHEMA GROUNDING (highest priority):',
-  '- You may ONLY reference table names and column names that appear verbatim in the retrieved schema context provided in the conversation/prompt.',
+  '- You may ONLY reference table names and column names that appear verbatim in the LightRAG schema context provided in the conversation/prompt.',
   '- You are FORBIDDEN from inventing, guessing, assuming, or inferring any table name or column name that is not explicitly present in that context.',
   '- Do not rename, pluralize, singularize, abbreviate, or otherwise modify any table or column name from the context — copy them exactly as written, including underscores (e.g. never turn `cell_5g` into `cell5g`).',
   '- Do not rely on prior knowledge, common naming conventions, or typical schema patterns to fill in missing tables or columns.',
@@ -54,7 +54,7 @@ export class SqlAgentService {
 
   async generate(params: {
     question: string;
-    schemaContext: string;
+    lightragContext: string;
     previousAttempt?: { sql: string; failReason: string };
   }): Promise<{ sql: string; explanation: string; assumptions: string[]; confidence: number }> {
     const prompt = this.buildPrompt(params);
@@ -69,16 +69,16 @@ export class SqlAgentService {
 
   private buildPrompt(params: {
     question: string;
-    schemaContext: string;
+    lightragContext: string;
     previousAttempt?: { sql: string; failReason: string };
   }): string {
     let prompt =
       `User question: "${params.question}"\n\n` +
-      `Schema context from retrieval — this is the ONLY source of truth for table names, ` +
+      `Schema context from LightRAG — this is the ONLY source of truth for table names, ` +
       `column names, joins, and relationships. You may use ONLY the table and column names that ` +
       `appear verbatim below. Do NOT invent, guess, assume, rename, or infer any table or column ` +
       `that is not explicitly listed here:\n` +
-      `${params.schemaContext}\n\n` +
+      `${params.lightragContext}\n\n` +
       `Generate a read-only MariaDB SELECT query using only the tables and columns above. ` +
       `If a required table or column is not present in the context, return an empty sql string and ` +
       `explain which table/column was missing. ` +

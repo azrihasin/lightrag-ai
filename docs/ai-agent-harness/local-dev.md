@@ -10,9 +10,7 @@ Copy `minds-ai-agent/.env.example` to `minds-ai-agent/.env` and fill in the valu
 | `AI_MODEL` | `gpt-4o-mini` | Model name (e.g. `gpt-4o`, `claude-sonnet-4-6`) |
 | `OPENAI_API_KEY` | — | Required when `AI_PROVIDER=openai` |
 | `ANTHROPIC_API_KEY` | — | Required when `AI_PROVIDER=anthropic` |
-| `LANCEDB_DIR` | `{cwd}/lancedb` | Directory holding the LanceDB database |
-| `EMBEDDING_MODEL` | `text-embedding-3-large` | Embedding model for retrieval queries (must match the stored vectors, 3072-dim) |
-| `LLM_BINDING_HOST` | `https://api.openai.com/v1` | OpenAI-compatible base URL (also used to embed queries) |
+| `LIGHTRAG_API_URL` | `http://localhost:9621` | LightRAG HTTP API base URL |
 | `MARIADB_HOST` | `localhost` | MariaDB host for data queries |
 | `MARIADB_PORT` | `3306` | MariaDB port |
 | `MARIADB_USER` | `root` | MariaDB user |
@@ -24,28 +22,26 @@ Copy `minds-ai-agent/.env.example` to `minds-ai-agent/.env` and fill in the valu
 
 ---
 
-## Preparing the LanceDB retrieval table
+## Starting LightRAG
 
-Schema retrieval is served locally from the LanceDB `vdb_chunks` table — there is
-no separate retrieval server to start. The table is checked in at
-`minds-ai-agent/lancedb/vdb_chunks.lance` (103 rows, 3072-dim vectors).
-
-To (re)build the table from the embeddings source `vdb_chunks.json`, start the
-backend and call the conversion endpoint:
+LightRAG must be running before the harness can retrieve schema context.
 
 ```bash
-curl -X POST http://localhost:3000/api/lancedb/convert
+# From the LightRAG project directory:
+python -m lightrag.api --port 9621 --working-dir ./rag-data
 ```
 
-The retrieval tool connects to `LANCEDB_DIR` (default `{cwd}/lancedb`), opens
-`vdb_chunks`, embeds the query with `EMBEDDING_MODEL`, and runs a hybrid search
-(dense vector similarity + BM25 full-text search, fused with Reciprocal Rank
-Fusion). It idempotently builds the full-text index on `content` on first use.
+Or with Docker:
+```bash
+docker run -p 9621:9621 -v $(pwd)/rag-data:/app/data lightrag:latest
+```
 
-> The embedding model **must** match the model that produced the stored vectors
-> (`text-embedding-3-large`, 3072-dim). It is resolved through the same
-> OpenAI-compatible `LLM_BINDING_HOST` / `OPENAI_API_KEY` used for the LLM, so
-> point those at an embedding-capable endpoint.
+Confirm it's up:
+```bash
+curl http://localhost:9621/health
+```
+
+LightRAG needs to have been fed the database schema documentation beforehand. See the LightRAG project README for ingestion instructions.
 
 ---
 
@@ -137,6 +133,7 @@ npm run test:cov
 Key test files:
 - `src/ai/mastra/safety/sql-safety.service.spec.ts` — SQL validator
 - `src/ai/mastra/safety/llm-data-boundary.guard.spec.ts` — LLM boundary guard
+- `src/ai/mastra/tools/lightrag.tool.spec.ts` — LightRAG NDJSON parser
 - `src/ai/mastra/harness/data-agent-harness.service.spec.ts` — full harness loop (mocked agents)
 
 ---
@@ -147,9 +144,8 @@ Key test files:
 - Check `ChatService.isDataQuestion()` — keywords like "how many", "show me", "count", "list" trigger it.
 - Enable `LOG_LEVEL=debug` to see routing decisions.
 
-**Retrieval returns an empty schema:**
-- Ensure the LanceDB `vdb_chunks` table exists (rebuild it via `POST /api/lancedb/convert`).
-- Confirm `EMBEDDING_MODEL` matches the model that produced the stored vectors.
+**LightRAG returns `sufficient=false`:**
+- Ensure LightRAG has been ingested with schema documents.
 - Try a more specific query that matches your table names.
 
 **SQL validation fails after retries:**

@@ -137,7 +137,7 @@ const ERROR_TITLE: Record<StepKey, string> = {
 export function resolveStepKey(name: string): StepKey {
   const n = name.toLowerCase();
   if (/intent/.test(n)) return 'analyze_intent';
-  if (/context|schema|retriev/.test(n)) return 'retrieve_context';
+  if (/context|lightrag|schema|retriev/.test(n)) return 'retrieve_context';
   if (/validat/.test(n)) return 'validate_sql';
   if (/visuali|chart|graph|\bplot\b|\bmap\b|render/.test(n)) return 'generate_visualization';
   if (/(generat|writ|prepar|build).*sql/.test(n)) return 'generate_sql';
@@ -242,7 +242,7 @@ function plural(n: number, word: string): string {
 
 /**
  * Pull only the table names for the retrieve-context reasoning body. The retrieval
- * result is the JSON whitelist `{ tables: [{ table, columns }] }`, so we
+ * result is LightRAG's JSON whitelist `{ tables: [{ table, columns }] }`, so we
  * parse it and take exactly the `table` fields — never the `columns`. Falls back
  * to a qualified-identifier/backtick regex for non-JSON text (e.g. a recovery
  * narration), preserving first-seen order and de-duplicating.
@@ -258,7 +258,7 @@ function extractTableNames(text: string): string[] {
 }
 
 /**
- * Parse a schema whitelist and return its `table` names only, or null
+ * Parse a LightRAG schema whitelist and return its `table` names only, or null
  * when `text` isn't the expected `{ tables: [{ table, columns }] }` JSON.
  */
 function tableNamesFromJson(text: string): string[] | null {

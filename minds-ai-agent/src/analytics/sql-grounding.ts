@@ -13,7 +13,7 @@ export type SchemaGroundingResult =
  * Rather than trusting the LLM to obey "only use names from the context", this
  * parses the recorded SQL into an AST, extracts every real table and column
  * identifier (aliases, functions, keywords and string literals are excluded by
- * the parser), and confirms each one appears verbatim in the retrieved
+ * the parser), and confirms each one appears verbatim in the retrieved LightRAG
  * schema context. Any identifier not found in the context is, by definition, a
  * name the model invented — so the query is rejected and the offending names are
  * returned so the model can correct itself.

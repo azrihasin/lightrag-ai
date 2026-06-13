@@ -31,7 +31,7 @@ export type ReexecuteResult = {
 
 const STEP_LABELS: Record<WorkflowStepKey, string> = {
   analyze_intent: 'Analyze intent',
-  retrieve_context: 'Retrieve schema context (LanceDB)',
+  retrieve_context: 'Retrieve schema context (LightRAG)',
   generate_sql: 'Generate SQL',
   validate_sql: 'Validate SQL',
   execute_sql: 'Execute SQL (MariaDB)',
@@ -75,7 +75,7 @@ export class TextToVizWorkflow {
       id: 'intent-agent',
       name: 'IntentAgent',
       instructions:
-        'You analyze user data questions and extract structured intent optimized for schema retrieval. ' +
+        'You analyze user data questions and extract structured intent optimized for LightRAG schema retrieval. ' +
         'Describe the metric, dimension, time grain, filters, and visualization need in business terms. ' +
         'Do NOT invent table names, column names, or database structure.',
       model,
@@ -136,12 +136,12 @@ export class TextToVizWorkflow {
       });
       throw new Error(
         `Not enough schema or business context to safely generate SQL. ` +
-        `Retrieval returned: ${context.contextSummary}`,
+        `LightRAG returned: ${context.contextSummary}`,
       );
     }
     await done(
       'retrieve_context',
-      `Retrieved schema context from LanceDB ` +
+      `Retrieved schema context from LightRAG ` +
         `(${context.references.length} reference${context.references.length === 1 ? '' : 's'}).\n\n` +
         `${context.contextSummary}`,
     );
@@ -149,8 +149,8 @@ export class TextToVizWorkflow {
     // Step 3: generate_sql
     signal?.throwIfAborted();
     await begin('generate_sql');
-    const schemaContext = context.documents.map(d => d.text).join('\n\n').slice(0, 4000);
-    const sqlResult = await this.generateSql(question, schemaContext);
+    const lightragContext = context.documents.map(d => d.text).join('\n\n').slice(0, 4000);
+    const sqlResult = await this.generateSql(question, lightragContext);
     this.logger.debug({ sql: sqlResult.sql }, 'generate_sql done');
 
     if (!sqlResult.sql) {
@@ -299,7 +299,7 @@ export class TextToVizWorkflow {
 
   private async analyzeIntent(question: string): Promise<IntentAnalysis> {
     const prompt =
-      `Analyze this data question and extract structured intent for schema retrieval.\n` +
+      `Analyze this data question and extract structured intent for LightRAG schema retrieval.\n` +
       `Question: "${question}"\n\n` +
       `Describe: the metric requested, dimensions/groupings, time grain if any, filters, ` +
       `and the best visualization type (bar chart, line chart, table, etc.). ` +
@@ -330,9 +330,9 @@ export class TextToVizWorkflow {
 
   private async generateSql(
     question: string,
-    schemaContext: string,
+    lightragContext: string,
   ): Promise<SqlGenerationResult> {
-    return this.sqlAgent.generate({ question, schemaContext });
+    return this.sqlAgent.generate({ question, lightragContext });
   }
 
   private validateSql(rawSql: string): SqlValidationResult {

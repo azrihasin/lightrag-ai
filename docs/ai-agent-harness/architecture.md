@@ -21,7 +21,7 @@ User question
        ▼
 ┌──────────────────┐   context.sufficient=false?
 │  ContextAgent    │──────────────────────────────► SafeErrorResponse
-│  (LanceDB tool)  │
+│  (LightRAG tool) │
 └────────┬─────────┘
          │ RetrievedContext (schema docs, references)
          ▼
@@ -79,7 +79,7 @@ User question
 | Agent | Input (safe) | Output | LLM? |
 |-------|-------------|--------|------|
 | `IntentAgent` | User question | intentSummary, schemaQuery, clarificationNeeded | Yes |
-| `ContextAgent` | schemaQuery | RetrievedContext (schema docs) | No — LanceDB hybrid search (vector + BM25) |
+| `ContextAgent` | schemaQuery | RetrievedContext (schema docs) | No — calls LightRAG HTTP API |
 | `SqlAgent` | User question + schema context | SELECT SQL | Yes |
 | `TransformAgent` | Column metadata, rowCount, SQL text | JMESPath expression | Yes |
 | `VisualizationAgent` / `JsonRenderTool` | Column metadata, transform shape | json-render spec | No — deterministic |
@@ -99,26 +99,21 @@ If a violation is found, `assertClean()` throws and the entire harness run fails
 
 ---
 
-## Retrieval Flow (LanceDB hybrid search)
+## LightRAG Flow
 
 ```
 ContextAgent.run()
-  └─► LancedbRetrievalTool.asTool().execute({ query, topK })
-        └─► connect(LANCEDB_DIR) → openTable('vdb_chunks')
-        └─► embed(query) with EMBEDDING_MODEL (text-embedding-3-large, 3072-dim)
-        └─► ensureFtsIndex('content', Index.fts())  // idempotent
-        └─► table.query()
-              .fullTextSearch(query)        // BM25 over content
-              .nearestTo(queryVector)       // dense vector similarity
-              .rerank(RRFReranker)          // Reciprocal Rank Fusion
-              .limit(topK)
-            (falls back to pure vector search if hybrid/FTS is unavailable)
-        └─► parse the top-k chunks into the strict whitelist JSON
-              { tables: [{ table, columns }] }  (identifiers kept verbatim)
-        └─► return { query, schemaJson }
+  └─► LightragHarnessTool.asTool().execute({ query, mode: 'mix', topK: 10 })
+        └─► POST ${LIGHTRAG_API_URL}/query/stream
+              body: { query, mode, stream: true, include_references: true, top_k }
+              ↓ response: NDJSON stream
+              ↓ lines: { response: "..." } | { references: [...] } | { error: "..." }
+        └─► parseNdjsonResponse(): assemble chunks, extract references
+        └─► sufficient = answer.length > 100
+        └─► return RetrievedContext { answer, documents, references, sufficient, contextSummary }
 ```
 
-If the retrieval returns an empty schema, the harness short-circuits before SQL generation and returns a safe error response.
+If `sufficient=false`, the harness short-circuits before SQL generation and returns a safe error response.
 
 ---
 

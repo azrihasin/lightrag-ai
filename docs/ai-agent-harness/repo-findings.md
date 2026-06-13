@@ -47,14 +47,13 @@ AppModule
 - Config: `MARIADB_HOST`, `MARIADB_PORT`, `MARIADB_USER`, `MARIADB_PASSWORD`, `MARIADB_DATABASE`
 - Used by: `ExecuteSqlTool` via `@Inject(DRIZZLE)`
 
-## Schema Retrieval (LanceDB hybrid search)
+## LightRAG Endpoint
 
-`src/ai/mastra/tools/lancedb-retrieve.tool.ts`:
-- Connects to `LANCEDB_DIR` (default `{cwd}/lancedb`), opens the `vdb_chunks` table
-- Embeds the query with `EMBEDDING_MODEL` (text-embedding-3-large, 3072-dim)
-- Hybrid search: BM25 full-text over `content` + dense vector similarity, fused with RRF
-- Falls back to pure vector search if hybrid/FTS is unavailable
-- Returns `{ query, schemaJson }` where `schemaJson` is the strict whitelist `{ tables: [{ table, columns }] }`
+`src/chat/tools/retrieve-context.tool.ts`:
+- `POST ${LIGHTRAG_API_URL}/query/stream`
+- Default URL: `http://localhost:9621`
+- Reads NDJSON lines: `{ response: string }` chunks + `{ references: [...] }` line
+- Returns `{ documents, query, sufficient, contextSummary }`
 
 ## Existing Tools (15 total)
 

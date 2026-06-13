@@ -47,7 +47,7 @@ export class GenerateSqlAgentService {
       // retrieve_context into this subagent's prompt is unreliable — when it fails,
       // this agent sees no schema and (correctly per its grounding rule) records
       // empty SQL even though the context was sufficient. So we inject the exact
-      // schema the retrieval tool wrote to the run blackboard (`run.retrievedContext`,
+      // schema the LightRAG tool wrote to the run blackboard (`run.retrievedContext`,
       // the SAME source the record_sql grounding guard checks against) directly into
       // the prompt. This resolves within the analyticsRunStore async context, like
       // the record_sql tool's currentRun() call.
