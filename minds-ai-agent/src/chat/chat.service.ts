@@ -186,7 +186,16 @@ export class ChatService {
 
   // ── Stream entry points ─────────────────────────────────────────────────────
 
-  /** General chat assistant. Always routes to the analytics agent. */
+  /**
+   * General chat assistant. Routes to the master multi-agent network: the
+   * `analyticsMaster` supervisor delegates to its 7 subagents in order
+   * (analyze_intent → retrieve_context → generate_sql → validate_sql →
+   * execute_sql → summarize_result → generate_visualization). The new LightRAG
+   * pieces are folded into the network — retrieve_context pulls structured schema
+   * from LightRAG's `/query/data` endpoint, and generate_sql writes its query
+   * with the Enterprise Text-to-SQL procedure — so the turn produces a grounded,
+   * executed result with a data table and chart, not just SQL text.
+   */
   stream(dto: ChatRequestDto, res: Response): void {
     const ctx = this.resolveStreamContext(dto);
     this.logger.info({ threadId: ctx.threadId, resourceId: ctx.resourceId }, 'Chat stream started');
@@ -379,11 +388,6 @@ export class ChatService {
 
     const run = createRunContext();
     const reasoningParts: Array<{ key: string; text: string }> = [];
-    // Database table names surfaced from the LightRAG retrieval, streamed to the
-    // UI as muted `source` chips (instead of dumping the full retrieved context).
-    // `emittedTables` dedupes across retries; `tableNames` is persisted for reload.
-    const emittedTables = new Set<string>();
-    const tableNames: string[] = [];
     // step key → the unique stream id of its currently-open reasoning block.
     const openBlocks = new Map<string, string>();
     // The most recent unresolved failure. While set, each following step is
@@ -479,7 +483,6 @@ export class ChatService {
             });
             recovery = this.nextRecovery(recovery, resolveStepKey(key), display);
             this.closeReasoning(writer, key, display, openBlocks, reasoningParts, run, lightragStreamed);
-            this.emitTableSources(writer, key, run, emittedTables, tableNames);
             continue;
           }
 
@@ -564,7 +567,11 @@ export class ChatService {
         });
         recovery = this.nextRecovery(recovery, resolveStepKey(key), display);
         const metricsMd = this.lightragMetricsComment(key, run);
-        const persistMd = renderReasoningMarkdown(display) + this.retrievedContextBlock(key, run) + metricsMd;
+        const persistMd =
+          renderReasoningMarkdown(display) +
+          this.retrievedContextBlock(key, run) +
+          this.generatedSqlBlock(key, run) +
+          metricsMd;
         // Skip re-emitting the fence to the live UI when it was already streamed
         // in (see closeReasoning); the persisted copy keeps it for reload.
         const liveMd =
@@ -574,7 +581,6 @@ export class ChatService {
         writer.write({ type: 'reasoning-delta', id, delta: `\n\n${liveMd}` });
         writer.write({ type: 'reasoning-end', id });
         reasoningParts.push({ key, text: persistMd });
-        this.emitTableSources(writer, key, run, emittedTables, tableNames);
       }
 
       // Emit the SQL table + visualization from the blackboard. The data table
@@ -611,7 +617,6 @@ export class ChatService {
         finalText,
         run: hasData ? run : undefined,
         renderId,
-        tableNames,
       });
     } catch (err) {
       // A client Stop aborts the agent loop, which surfaces here as an
@@ -687,8 +692,13 @@ export class ChatService {
     // stream and again on history reload.
     const metricsMd = this.lightragMetricsComment(key, run);
     // The persisted copy always carries the raw LightRAG JSON (retrieve_context
-    // only) as a fenced codeblock so a history reload renders it.
-    const persistMd = renderReasoningMarkdown(display) + this.retrievedContextBlock(key, run) + metricsMd;
+    // only) and the generated SQL (generate_sql only) as fenced codeblocks so a
+    // history reload renders them.
+    const persistMd =
+      renderReasoningMarkdown(display) +
+      this.retrievedContextBlock(key, run) +
+      this.generatedSqlBlock(key, run) +
+      metricsMd;
     // When the response was already streamed live into this block as a codeblock,
     // the live UI only needs the outcome heading + body now — re-emitting the
     // fence would duplicate it. The frontend lifts the codeblock out of the full
@@ -701,35 +711,6 @@ export class ChatService {
     writer.write({ type: 'reasoning-end', id });
     reasoningParts.push({ key, text: persistMd });
     openBlocks.delete(key);
-  }
-
-  /**
-   * For the LightRAG retrieve_context step, stream the relevant database table
-   * names as `source-url` parts (assistant-ui renders them as muted source
-   * chips). The full retrieved context is intentionally NOT sent to the UI — only
-   * the table names are surfaced. Dedupes across retries via `emitted` and records
-   * each name in `collected` so the turn can be persisted for history reload.
-   */
-  private emitTableSources(
-    writer: any,
-    key: string,
-    run: AnalyticsRunContext,
-    emitted: Set<string>,
-    collected: string[],
-  ): void {
-    if (resolveStepKey(key) !== 'retrieve_context') return;
-    const context = run.retrievedContext?.trim();
-    if (!context) return;
-    for (const table of this.extractTableNames(context)) {
-      const id = table.toLowerCase();
-      if (emitted.has(id)) continue;
-      emitted.add(id);
-      collected.push(table);
-      // No navigable URL exists for a DB table — the name is carried as the
-      // title and `url` mirrors it to satisfy the source part shape. The
-      // frontend (sources.tsx) renders non-http sources as a static muted chip.
-      writer.write({ type: 'source-url', sourceId: `table-${id}`, url: table, title: table });
-    }
   }
 
   /**
@@ -753,6 +734,20 @@ export class ChatService {
   }
 
   /**
+   * For the generate_sql step, render the SQL recorded on the run blackboard as a
+   * fenced ```sql block appended to the reasoning block body. The UI lifts it out
+   * and renders it as a codeblock (see frontend GhostReasoning), so the user sees
+   * the exact query that was prepared. Returns '' for other steps or when no SQL
+   * was recorded (e.g. a context gap where the step recorded an empty query).
+   */
+  private generatedSqlBlock(key: string, run: AnalyticsRunContext): string {
+    if (resolveStepKey(key) !== 'generate_sql') return '';
+    const sql = run.sql?.trim();
+    if (!sql) return '';
+    return `\n\n\`\`\`sql\n${sql}\n\`\`\``;
+  }
+
+  /**
    * Encode the LightRAG token/timing metrics (retrieve_context only) as an
    * invisible HTML comment appended to the reasoning block. ReactMarkdown ignores
    * it; the frontend parses the comment out and renders a message-timing-style
@@ -764,41 +759,6 @@ export class ChatService {
     const metrics = run.lightragMetrics;
     if (!metrics) return '';
     return `\n\n<!--lightrag-timing:${JSON.stringify(metrics)}-->`;
-  }
-
-  /**
-   * Pull database table names out of the raw LightRAG schema context. Prefers
-   * strong signals — KG entity rows typed `TABLE`, `CREATE TABLE` declarations,
-   * and explicit `Table:` labels — and only falls back to any backticked
-   * identifier when none are present. Capped and deduped to keep the chip list
-   * tidy.
-   */
-  private extractTableNames(context: string): string[] {
-    const norm = (raw: string) => raw.trim().replace(/^[`"']+|[`"']+$/g, '');
-    const valid = (n: string) => /^[A-Za-z_][\w$]*(?:\.[A-Za-z_][\w$]*)?$/.test(n);
-    const strong = new Set<string>();
-    const fallback = new Set<string>();
-
-    // LightRAG KG entity rows typed as a table, e.g. `"sales_orders","TABLE",…`.
-    for (const m of context.matchAll(
-      /["'`]?([A-Za-z_][\w$]*(?:\.[A-Za-z_][\w$]*)?)["'`]?\s*,\s*["'`]?table["'`]?/gi,
-    ))
-      strong.add(norm(m[1]));
-    // Explicit declarations: `CREATE TABLE x`, `Table: x`, `table_name = x`.
-    for (const m of context.matchAll(
-      /\bcreate\s+table\s+(?:if\s+not\s+exists\s+)?`?([A-Za-z_][\w$]*(?:\.[A-Za-z_][\w$]*)?)`?/gi,
-    ))
-      strong.add(norm(m[1]));
-    for (const m of context.matchAll(
-      /\btable(?:\s*_?name)?\s*[:=]\s*`?([A-Za-z_][\w$]*(?:\.[A-Za-z_][\w$]*)?)`?/gi,
-    ))
-      strong.add(norm(m[1]));
-    // Fallback: any backticked identifier (raw schema text without KG typing).
-    for (const m of context.matchAll(/`([A-Za-z_][\w$]*(?:\.[A-Za-z_][\w$]*)?)`/g))
-      fallback.add(norm(m[1]));
-
-    const chosen = strong.size > 0 ? strong : fallback;
-    return [...chosen].filter(valid).slice(0, 12);
   }
 
   /** Collect a step's exact, structured outcome metadata from the run blackboard. */
@@ -892,7 +852,6 @@ export class ChatService {
       finalText: string;
       run?: AnalyticsRunContext;
       renderId: string;
-      tableNames: string[];
     },
   ): Promise<void> {
     const storage = this.mindsAgent.store.memoryStorage;
@@ -950,9 +909,8 @@ export class ChatService {
             columns: data.run.columns,
             rowCount: data.run.rowCount,
             visualizationSpec: safeSpec,
-            tables: data.tableNames,
           }
-        : { workflow: 'analytics-network', tables: data.tableNames },
+        : { workflow: 'analytics-network' },
     };
 
     await storage.saveMessages({

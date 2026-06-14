@@ -10,6 +10,15 @@ import { currentRun } from '../analytics-run.store';
 import { validateReadOnlySql } from './validate-sql.agent';
 
 /**
+ * Hard cap on how many times run_sql may execute in a single turn. The master
+ * agent retries the recover loop (retrieve_context → generate_sql → validate_sql
+ * → execute_sql) when a query fails; without a deterministic ceiling a query that
+ * keeps failing would spin that loop indefinitely and waste tokens. After this
+ * many attempts run_sql refuses to run again and tells the agent to stop.
+ */
+const MAX_EXECUTE_ATTEMPTS = 2;
+
+/**
  * Subagent #5 — execute_sql. Runs the validated read-only query against the
  * MariaDB business database and records the rows/columns on the blackboard.
  * Privacy: ONLY the result structure (row count + column names/types) is
@@ -60,6 +69,21 @@ export class ExecuteSqlAgentService {
       execute: async () => {
         const run = currentRun();
         const query = run?.sql ?? '';
+
+        // Deterministic retry ceiling: count every attempt and refuse once the
+        // cap is exceeded. The terminal message tells the agent to stop retrying
+        // and report failure, so a query that keeps failing can't loop forever.
+        if (run) {
+          run.executeAttempts = (run.executeAttempts ?? 0) + 1;
+          if (run.executeAttempts > MAX_EXECUTE_ATTEMPTS) {
+            return {
+              ok: false,
+              error:
+                `Retry limit reached: the query was attempted ${MAX_EXECUTE_ATTEMPTS} times ` +
+                `without success. Stop retrying and report plainly that the data could not be retrieved.`,
+            };
+          }
+        }
 
         const safety = validateReadOnlySql(query);
         if (!safety.valid) {

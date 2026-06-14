@@ -106,6 +106,13 @@ export interface AnalyticsRunContext {
   sql?: string;
   /** Whether validate_sql passed; populated by the validate_sql tool. */
   sqlValid?: boolean;
+  /**
+   * How many times run_sql has been invoked this turn. Incremented by the
+   * execute_sql tool and used to hard-cap the recovery retry loop (see
+   * MAX_EXECUTE_ATTEMPTS) so a repeatedly-failing query can't spin the agent
+   * indefinitely and burn tokens.
+   */
+  executeAttempts?: number;
   /** Executed rows + columns, populated by the execute_sql tool (run_sql). */
   rows: Record<string, unknown>[];
   columns: Array<{ name: string; type: string }>;

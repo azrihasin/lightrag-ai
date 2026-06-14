@@ -4,6 +4,7 @@ import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { encode } from 'gpt-tokenizer';
 import { currentRun } from '../../../analytics/analytics-run.store';
+import type { LightragMetrics } from '../../../analytics/analytics.types';
 
 /**
  * Strict schema-formatter prompt handed to LightRAG's generation step. LightRAG
@@ -41,6 +42,15 @@ function countTokens(text: string): number {
 // still using the knowledge graph and LLM generation step.
 const MAX_LOCAL_CONTEXT_TOKENS = 2000;
 const MAX_TEXT_UNIT_TOKENS = 512;
+// Total token budget for the structured `/query/data` retrieval. LightRAG fills
+// this budget in priority order — entities, then relations, then CHUNKS LAST — so
+// a too-tight cap (e.g. the 2000 used for the streaming path) leaves nothing for
+// chunks and they come back as `[]` even though the document chunks exist. Give
+// enough headroom that the retrieved chunks actually survive into the response.
+const MAX_TOTAL_CONTEXT_TOKENS = 8000;
+// How many document chunks to pull from the vector store. Set explicitly because
+// LightRAG can otherwise return zero chunks when only the KG side matched.
+const DEFAULT_CHUNK_TOP_K = 8;
 
 @Injectable()
 export class LightragHarnessTool {
@@ -179,6 +189,179 @@ export class LightragHarnessTool {
         }
       },
     });
+  }
+
+  /**
+   * Tool form of the structured `/query/data` retrieval, for the master network's
+   * `retrieve_context` subagent. Unlike {@link asTool} (which drives the older
+   * `/query/stream` generation path and returns a compact `{tables}` whitelist),
+   * this calls {@link retrieve} to pull the richer structured payload (knowledge
+   * graph entities, relationships and document chunks) and writes it to the run
+   * blackboard so the downstream `generate_sql` grounding guard and the chat UI
+   * (`retrievedContextBlock`, table-source chips, timing badge) all read the exact
+   * same context. Defaults to `mix` mode like the standalone flow.
+   */
+  asDataTool() {
+    return createTool({
+      id: 'harness_retrieve_context',
+      description:
+        'Retrieve structured database schema context from LightRAG as JSON ' +
+        '({ entities, relationships, chunks }) for the analyzed intent. Downstream SQL ' +
+        'generation must treat the table/column names in this JSON as the only allowed schema.',
+      inputSchema: z.object({
+        query: z.string().describe('Schema-oriented retrieval query derived from user intent'),
+        mode: z
+          .enum(['local', 'global', 'hybrid', 'naive', 'mix', 'bypass'])
+          .optional()
+          .default('mix'),
+        topK: z
+          .number()
+          .int()
+          .min(1)
+          .max(DEFAULT_TOP_K)
+          .optional()
+          .describe(
+            `Entities/relations to retrieve from the knowledge graph; defaults to ${DEFAULT_TOP_K}. ` +
+              `Capped at ${DEFAULT_TOP_K} — do NOT raise it on retry, it only increases cost.`,
+          ),
+      }),
+      outputSchema: z.object({
+        query: z.string(),
+        /** The structured retrieval JSON string, passed as context to generate_sql. */
+        schemaJson: z.string(),
+      }),
+      execute: async (input, ctx?: { abortSignal?: AbortSignal }) => {
+        const { schemaJson, metrics } = await this.retrieve({
+          query: input.query,
+          mode: input.mode ?? 'mix',
+          topK: input.topK,
+          signal: ctx?.abortSignal,
+        });
+
+        // Record on the run blackboard so the SQL agent, the record_sql grounding
+        // guard, and the chat UI all see exactly this context (mirrors asTool()).
+        const run = currentRun();
+        if (run) {
+          run.retrievedContext = schemaJson;
+          run.lightragMetrics = metrics;
+        }
+
+        return { query: input.query, schemaJson };
+      },
+    });
+  }
+
+  /**
+   * Standalone retrieval against LightRAG's structured `/query/data` endpoint —
+   * the first step of the 2-step LightRAG chat flow. Unlike {@link asTool} (which
+   * drives the legacy `/query/stream` generation path), this returns the raw
+   * structured retrieval payload (knowledge-graph entities, relationships and
+   * document chunks) as a pretty-printed JSON string for the SQL agent to ingest.
+   *
+   * Per the flow's requirements: sends ONLY the latest user prompt (no
+   * conversation history), uses `mix` mode, and omits references. The endpoint
+   * returns a single JSON body (it does not stream), so there is no live token
+   * sink here — the caller renders the returned JSON as a code block.
+   */
+  async retrieve(params: {
+    query: string;
+    mode?: 'local' | 'global' | 'hybrid' | 'naive' | 'mix' | 'bypass';
+    topK?: number;
+    signal?: AbortSignal;
+  }): Promise<{ schemaJson: string; metrics: LightragMetrics }> {
+    const LIGHTRAG_URL = process.env.LIGHTRAG_API_URL ?? 'http://localhost:9621';
+    const { signal } = params;
+
+    // If the user already stopped before this call starts, do not hit LightRAG.
+    if (signal?.aborted) {
+      throw signal.reason ?? new DOMException('Aborted', 'AbortError');
+    }
+
+    const mode = params.mode ?? 'mix';
+    const topK = Math.min(params.topK ?? DEFAULT_TOP_K, DEFAULT_TOP_K);
+    this.logger.debug({ query: params.query, mode, topK }, 'LightRAG /query/data retrieval');
+
+    // Abort on EITHER a user Stop OR the per-request timeout.
+    const timeoutSignal = AbortSignal.timeout(this.resolveTimeout());
+    const reqSignal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
+
+    // /query/data reports no usage; tokenize the query we send and the JSON we
+    // get back ourselves (same approach as the streaming path).
+    const inputTokens = countTokens(params.query);
+    const startedAt = Date.now();
+
+    try {
+      const res = await fetch(`${LIGHTRAG_URL}/query/data`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          // Latest user prompt ONLY — conversation_history is intentionally omitted.
+          query: params.query,
+          mode,
+          top_k: topK,
+          // Number of document chunks to retrieve from the vector store. Pinned so
+          // chunks are actually returned (without it LightRAG can yield zero chunks
+          // when only the KG side matched).
+          chunk_top_k: DEFAULT_CHUNK_TOP_K,
+          // Total token budget across entities + relations + chunks. Chunks are
+          // budgeted LAST, so this must be roomy enough that they aren't squeezed
+          // out to `[]` (see MAX_TOTAL_CONTEXT_TOKENS).
+          max_total_tokens: MAX_TOTAL_CONTEXT_TOKENS,
+          // No references needed for SQL grounding.
+          include_references: false,
+          // Include the actual chunk text so the SQL agent sees real schema/doc content.
+          include_chunk_content: true,
+        }),
+        signal: reqSignal,
+      });
+
+      if (!res.ok) {
+        this.logger.warn({ status: res.status }, 'LightRAG /query/data non-OK response');
+        const empty = this.emptyData();
+        return { schemaJson: empty, metrics: this.buildMetrics(inputTokens, startedAt, empty) };
+      }
+
+      const payload = (await res.json()) as Record<string, unknown>;
+      const schemaJson = this.formatRetrievedData(payload);
+      return { schemaJson, metrics: this.buildMetrics(inputTokens, startedAt, schemaJson) };
+    } catch (err) {
+      // User pressed Stop: propagate so the chat loop unwinds without retrying.
+      if (signal?.aborted) {
+        this.logger.info('LightRAG /query/data retrieval aborted by user stop');
+        throw err;
+      }
+      // Timeout or network failure: degrade to empty context so the SQL agent can
+      // report a context gap rather than crash.
+      this.logger.error({ err }, 'LightRAG /query/data request failed');
+      const empty = this.emptyData();
+      return { schemaJson: empty, metrics: this.buildMetrics(inputTokens, startedAt, empty) };
+    }
+  }
+
+  private buildMetrics(inputTokens: number, startedAt: number, output: string): LightragMetrics {
+    const durationMs = Date.now() - startedAt;
+    // Non-streaming endpoint: first byte ≈ full response, so ttft ≈ duration.
+    return { inputTokens, outputTokens: countTokens(output), ttftMs: durationMs, durationMs };
+  }
+
+  /**
+   * Reduce a `/query/data` payload to the structured retrieval context the SQL
+   * agent needs — entities, relationships and chunks — as pretty-printed JSON.
+   * References are dropped (not needed for grounding). Tolerates either a
+   * `{ data: {...} }` envelope or a bare data object.
+   */
+  private formatRetrievedData(payload: Record<string, unknown>): string {
+    const data = (payload?.['data'] as Record<string, unknown> | undefined) ?? payload ?? {};
+    const out = {
+      entities: (data['entities'] as unknown[]) ?? [],
+      relationships: (data['relationships'] as unknown[]) ?? [],
+      chunks: (data['chunks'] as unknown[]) ?? [],
+    };
+    return JSON.stringify(out, null, 2);
+  }
+
+  private emptyData(): string {
+    return JSON.stringify({ entities: [], relationships: [], chunks: [] }, null, 2);
   }
 
   /**

@@ -19,12 +19,9 @@ import {
 } from "@json-render/react";
 import { StreamdownText } from "@/components/assistant-ui/streamdown-text";
 import { Reasoning } from "@/components/assistant-ui/reasoning";
-import { Sources } from "@/components/assistant-ui/sources";
-import { splitReasoningText, extractSources, extractCodeBlock, extractLightragTiming } from "@/lib/reasoning-format";
+import { splitReasoningText, extractCodeBlock, extractLightragTiming } from "@/lib/reasoning-format";
 import { CodeBlock } from "@/components/assistant-ui/code-block";
 import { LightragTimingBadge } from "@/components/assistant-ui/lightrag-timing";
-import { Badge } from "@/components/ui/badge";
-import { DatabaseIcon } from "lucide-react";
 import { ToolFallback } from "@/components/assistant-ui/tool-fallback";
 import type { ReasoningMessagePartComponent } from "@assistant-ui/react";
 import { getAgentForTool } from "@/lib/tool-agent-map";
@@ -134,9 +131,6 @@ const GhostReasoning: ReasoningMessagePartComponent = ({ text, status }) => {
     [codeBlock, baseText],
   );
   const proseBody = body;
-  // Retrieve-context blocks list the relevant source tables — render those as
-  // badges (all of them) instead of a truncated comma-joined sentence.
-  const sources = useMemo(() => extractSources(proseBody), [proseBody]);
 
   return (
     <Reasoning.Root variant="ghost" defaultOpen>
@@ -144,24 +138,10 @@ const GhostReasoning: ReasoningMessagePartComponent = ({ text, status }) => {
       {(proseBody || codeBlock || timing) && (
         <Reasoning.Content>
           <div className="flex flex-col gap-2">
-            {sources ? (
-              <>
-                {sources.lead && <Reasoning.Text>{sources.lead}</Reasoning.Text>}
-                <div className="flex flex-wrap gap-1.5">
-                  {sources.sources.map((source) => (
-                    <Badge key={source} variant="secondary" className="gap-1.5 font-mono">
-                      <DatabaseIcon className="size-3 shrink-0" />
-                      {source}
-                    </Badge>
-                  ))}
-                </div>
-              </>
-            ) : (
-              proseBody && <Reasoning.Text>{proseBody}</Reasoning.Text>
-            )}
+            {proseBody && <Reasoning.Text>{proseBody}</Reasoning.Text>}
             {codeBlock && (
               <CodeBlock
-                label="LightRAG Schema"
+                label={codeBlock.lang === "sql" ? "SQL Query" : "LightRAG Schema"}
                 code={codeBlock.code}
                 meta={codeBlock.lang}
                 bodyClassName="max-h-72"
@@ -254,7 +234,6 @@ const ChatAssistantMessage: FC = () => {
           components={{
             Text: StreamdownText,
             Reasoning: GhostReasoning,
-            Source: Sources,
             tools: { Fallback: NoOp },
           }}
         />

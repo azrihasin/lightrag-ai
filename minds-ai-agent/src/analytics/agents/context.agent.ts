@@ -25,15 +25,15 @@ export class ContextAgentNetworkService {
         'Run AFTER analyze_intent and BEFORE generate_sql.',
       instructions: [
         'You retrieve database schema context from LightRAG so the SQL agent can write a correct query.',
-        'LightRAG returns retrieved context only (table names, columns with data types, foreign keys/relationships) — it does NOT generate prose, summaries, or SQL. Do not ask it to.',
+        'LightRAG returns structured retrieved context only — knowledge-graph entities (tables, columns), relationships, and document chunks. It does NOT generate prose, summaries, or SQL. Do not ask it to.',
         'Begin your reply with ONE short sentence telling the user what you are about to do (e.g. "Looking up the relevant database schema.").',
         'Call the harness_retrieve_context tool with a schema-oriented query derived from the analyzed intent.',
-        'Then forward the retrieved schema context VERBATIM — the exact table names, columns with their data types, and relationships from the tool result — so the generate_sql agent has accurate names to write a correct query on the first attempt.',
-        'Do not paraphrase, summarize, rename, or invent tables/columns; copy the schema text as-is. Add no analysis of your own.',
-        'If the tool reports insufficient context (sufficient = false or empty schema), say so plainly and do not fabricate schema.',
+        'Then forward the retrieved context VERBATIM — the exact table names, columns, relationships, and chunk text from the tool result — so the generate_sql agent has accurate names to write a correct query on the first attempt.',
+        'Do not paraphrase, summarize, rename, or invent tables/columns; copy the context as-is. Add no analysis of your own.',
+        'If the tool returns empty context (no entities, relationships, or chunks), say so plainly and do not fabricate schema.',
       ].join('\n'),
       model: this.modelProvider.getModel() as any,
-      tools: { harness_retrieve_context: this.lightragTool.asTool() },
+      tools: { harness_retrieve_context: this.lightragTool.asDataTool() },
     });
   }
 }

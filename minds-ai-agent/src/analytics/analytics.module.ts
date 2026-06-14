@@ -12,6 +12,7 @@ import { ValidateSqlAgentService } from './agents/validate-sql.agent';
 import { ExecuteSqlAgentService } from './agents/execute-sql.agent';
 import { SummarizeAgentService } from './agents/summarize.agent';
 import { VisualizationAgentService } from './agents/visualization.agent';
+import { LightragSqlAgentService } from './agents/lightrag-sql.agent';
 
 @Module({
   imports: [AiMastraModule],
@@ -29,7 +30,12 @@ import { VisualizationAgentService } from './agents/visualization.agent';
     SummarizeAgentService,
     VisualizationAgentService,
     AnalyticsAgentService,
+    LightragSqlAgentService,
   ],
-  exports: [TextToVizWorkflow, AnalyticsAgentService],
+  // Re-export AiMastraModule (which provides LightragHarnessTool) and the LightRAG SQL agent
+  // so ChatService can drive the standalone 2-step LightRAG flow directly.
+  // NestJS only lets a module export providers it owns, so we re-export the whole module
+  // rather than the LightragHarnessTool provider directly.
+  exports: [TextToVizWorkflow, AnalyticsAgentService, AiMastraModule, LightragSqlAgentService],
 })
 export class AnalyticsModule {}

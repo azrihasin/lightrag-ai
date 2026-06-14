@@ -362,18 +362,13 @@ export function formatReasoningStep(step: ReasoningStepInput): ReasoningStepDisp
       // After a failure, retrieval is recovery — never a fresh "Found N tables".
       if (recovery) {
         const body =
-          tables.length > 0
-            ? `Re-examined the available fields — relevant sources: ${tables.join(', ')}.`
-            : cleanNarration(result, 2) || 'Re-examined the available tables and columns to correct the query.';
+          cleanNarration(result, 2) || 'Re-examined the available tables and columns to correct the query.';
         return { title: `Rechecked the schema${bridge}`, body };
       }
       let title = COMPLETE_FALLBACK_TITLE.retrieve_context;
       if (tables.length > 0) title = `Found ${plural(tables.length, 'relevant table')}`;
       else if (typeof refs === 'number') title = `Found ${plural(refs, 'relevant reference')}`;
-      const body =
-        tables.length > 0
-          ? `Relevant sources: ${tables.join(', ')}.`
-          : cleanNarration(result, 2) || 'Checked the available schema context.';
+      const body = cleanNarration(result, 2) || 'Checked the available schema context.';
       return { title, body };
     }
 
