@@ -2,5 +2,33 @@
   "permissions": {
     "defaultMode": "bypassPermissions"
   },
-  "skipDangerousModePermissionPrompt": true
+  "skipDangerousModePermissionPrompt": true,
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:\\Python313\\python.exe",
+            "args": ["-m", "code_review_graph", "update", "--skip-flows", "--repo", "C:/Users/User/Desktop/lightrag-ai"],
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:\\Python313\\python.exe",
+            "args": ["-m", "code_review_graph", "status", "--repo", "C:/Users/User/Desktop/lightrag-ai"],
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
 }

@@ -8,7 +8,7 @@
  *   - 'xy'    → chartXY/chartLineBar: { data, xKey, series[], title }
  *   - 'pie'   → chartPie: { data, nameKey, valueKey, title }
  *   - 'map'   → GeoMap: { center, data, latField, lngField, labelField, popupFields, cluster }
- *               Origin/destination columns are drawn as polyline connector shapes.
+ *               Origin/destination column pairs are drawn as curved arc connectors.
  *   - 'table' → no chart spec; the executed rows render as a data table only.
  *
  * Chart/map components embed `data` INLINE (the frontend reads props.data
@@ -49,8 +49,8 @@ export const VIZ_CATALOG: readonly CatalogComponent[] = [
   { name: 'ChartPieLegend', kind: 'pie', whenToUse: 'Proportional data where a color legend aids category identification.' },
   { name: 'ChartPieLabel', kind: 'pie', whenToUse: 'Proportional data where each segment value/label should always show.' },
 
-  // ── Geospatial (shadcn-map / Leaflet) ────────────────────────────────────────
-  { name: 'GeoMap', kind: 'map', whenToUse: 'Rows carry real latitude/longitude coordinates and the question is about WHERE things are: store/site/tower locations, coverage points, customer or asset positions, incidents. Plots data-driven point markers (cluster them for larger sets). Rows that also pair an origin AND a destination coordinate (trips, shipments, transfers, flows between places) are drawn as polyline connector lines. Needs latField + lngField (and origin/destination lat/lng columns for flows).' },
+  // ── Geospatial (mapcn / MapLibre GL) ─────────────────────────────────────────
+  { name: 'GeoMap', kind: 'map', whenToUse: 'Rows carry real latitude/longitude coordinates and the question is about WHERE things are: store/site/tower locations, coverage points, customer or asset positions, incidents. Plots data-driven point markers (cluster them for larger sets). Rows that also pair an origin AND a destination coordinate (trips, shipments, transfers, flows between places) are drawn as curved arc connectors. Needs latField + lngField (and origin/destination lat/lng columns for flows).' },
 ] as const;
 
 const BY_NAME = new Map(VIZ_CATALOG.map((c) => [c.name, c]));

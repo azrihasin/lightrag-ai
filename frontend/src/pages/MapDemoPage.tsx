@@ -20,21 +20,19 @@ const SAMPLE_SITES = [
 
 const CENTER: [number, number] = [3.1319, 101.6841];
 
-// Coverage polygon around KL city center
-const KL_COVERAGE_POLYGON: [number, number][] = [
-  [3.1800, 101.6700],
-  [3.1800, 101.7200],
-  [3.1200, 101.7300],
-  [3.1100, 101.6800],
-  [3.1300, 101.6600],
-];
-
 // Key route polyline (DUKE highway section)
 const DUKE_ROUTE: [number, number][] = [
   [3.2100, 101.6360],
   [3.1791, 101.6903],
   [3.1651, 101.6981],
   [3.1610, 101.7113],
+];
+
+// Origin → destination backhaul flows (curved arcs)
+const BACKHAUL_FLOWS = [
+  { from: [3.1528, 101.7038] as [number, number], to: [2.9213, 101.6559] as [number, number] },
+  { from: [3.1791, 101.6903] as [number, number], to: [3.0567, 101.5851] as [number, number] },
+  { from: [3.1348, 101.6245] as [number, number], to: [2.9264, 101.6964] as [number, number] },
 ];
 
 export default function MapDemoPage() {
@@ -44,7 +42,7 @@ export default function MapDemoPage() {
         <section className="space-y-1">
           <h1 className="text-2xl font-semibold tracking-tight">Map Components</h1>
           <p className="text-sm text-muted-foreground">
-            Interactive Leaflet map components powered by shadcn-map — rendered via the json-render catalog.
+            Interactive MapLibre GL map components powered by mapcn — rendered via the json-render catalog.
           </p>
         </section>
 
@@ -53,13 +51,13 @@ export default function MapDemoPage() {
           <div className="space-y-1">
             <h2 className="text-lg font-medium">Full Feature Map</h2>
             <p className="text-xs text-muted-foreground">
-              Multiple tile layers · layer groups · marker clustering · shapes · zoom · fullscreen · locate · draw controls
+              Clustered data markers · route polyline · origin→destination arcs · zoom · fullscreen · locate · compass
             </p>
           </div>
           <GeoMapRenderer
             props={{
               title: "MINDS Geo-Pro — Site Coverage & Network Map",
-              description: "Telekom Malaysia BTS sites with 5G/4G coverage overlay. Toggle layers to filter by technology.",
+              description: "Telekom Malaysia BTS sites with 5G/4G coverage. Click a point for details.",
               center: CENTER,
               zoom: 12,
               cluster: true,
@@ -67,129 +65,55 @@ export default function MapDemoPage() {
               latField: "latitude",
               lngField: "longitude",
               labelField: "site_name",
-              popupFields: ["site_name", "city", "status", "technology"],
-              tileLayers: [
-                {
-                  name: "Light",
-                  url: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
-                  darkUrl: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
-                },
-                {
-                  name: "Street",
-                  url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-                  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-                },
-                {
-                  name: "Satellite",
-                  url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-                  attribution: "Tiles &copy; Esri",
-                },
-              ],
-              layers: [
-                {
-                  name: "5G Sites",
-                  defaultActive: true,
-                  markers: SAMPLE_SITES.filter((s) => s.technology === "5G").map((s) => ({
-                    position: [s.latitude, s.longitude] as [number, number],
-                    label: s.site_name,
-                    tooltip: `${s.site_name} — ${s.status}`,
-                    popup: `<b>${s.site_name}</b><br/>Technology: 5G<br/>Status: ${s.status}<br/>City: ${s.city}`,
-                  })),
-                },
-                {
-                  name: "4G Sites",
-                  defaultActive: true,
-                  markers: SAMPLE_SITES.filter((s) => s.technology === "4G").map((s) => ({
-                    position: [s.latitude, s.longitude] as [number, number],
-                    label: s.site_name,
-                    tooltip: `${s.site_name} — ${s.status}`,
-                    popup: `<b>${s.site_name}</b><br/>Technology: 4G<br/>Status: ${s.status}<br/>City: ${s.city}`,
-                  })),
-                },
-                {
-                  name: "Coverage Zones",
-                  defaultActive: true,
-                  shapes: [
-                    {
-                      type: "polygon",
-                      positions: KL_COVERAGE_POLYGON,
-                      popup: "<b>KL City Core Coverage</b><br/>5G/4G active coverage zone",
-                      tooltip: "KL City Core Coverage",
-                    },
-                    {
-                      type: "circle",
-                      center: [2.9213, 101.6559] as [number, number],
-                      radius: 3000,
-                      popup: "<b>Cyberjaya Coverage</b><br/>Radius: 3 km",
-                      tooltip: "Cyberjaya Coverage Zone",
-                    },
-                  ],
-                },
-                {
-                  name: "Routes",
-                  defaultActive: false,
-                  shapes: [
-                    {
-                      type: "polyline",
-                      positions: DUKE_ROUTE,
-                      popup: "<b>DUKE Highway Corridor</b><br/>Active BTS route",
-                      tooltip: "DUKE Highway Route",
-                    },
-                  ],
-                },
-              ],
-              shapes: [
-                {
-                  type: "rectangle",
-                  bounds: [
-                    [3.14, 101.68],
-                    [3.17, 101.72],
-                  ],
-                  popup: "<b>KL City Centre Bounding Box</b>",
-                  tooltip: "KLCC Bounding Box",
-                },
-                {
-                  type: "circleMarker",
-                  center: [2.9264, 101.6964] as [number, number],
-                  radius: 8,
-                  popup: "<b>Putrajaya Federal Admin Area</b>",
-                  tooltip: "Putrajaya",
-                },
-              ],
+              popupFields: ["city", "status", "technology"],
+              routes: [{ positions: DUKE_ROUTE, color: "#2563eb", width: 3 }],
+              arcs: BACKHAUL_FLOWS,
               controls: {
                 zoom: true,
                 fullscreen: true,
                 locate: true,
-                search: false,
-                layers: true,
-                draw: {
-                  marker: true,
-                  polyline: true,
-                  polygon: true,
-                  circle: true,
-                  rectangle: true,
-                  edit: true,
-                  delete: true,
-                  undo: true,
-                },
+                compass: true,
               },
             }}
           />
         </section>
 
-        {/* ── Simple markers map ── */}
+        {/* ── Markers, popups & tooltips ── */}
+        <section className="space-y-3">
+          <div className="space-y-1">
+            <h2 className="text-lg font-medium">Markers · Popups · Tooltips</h2>
+            <p className="text-xs text-muted-foreground">
+              SQL rows with lat/lng → individual markers; hover for the label, click for field details
+            </p>
+          </div>
+          <GeoMapRenderer
+            props={{
+              title: "All Network Sites — Individual Markers",
+              center: CENTER,
+              zoom: 11,
+              data: SAMPLE_SITES,
+              latField: "latitude",
+              lngField: "longitude",
+              labelField: "site_name",
+              popupFields: ["city", "status", "technology"],
+              controls: { zoom: true, fullscreen: true },
+            }}
+          />
+        </section>
+
+        {/* ── Marker clustering ── */}
         <section className="space-y-3">
           <div className="space-y-1">
             <h2 className="text-lg font-medium">Marker Clustering</h2>
             <p className="text-xs text-muted-foreground">
-              SQL rows with lat/lng auto-converted to clustered markers
+              MapLibre clustering — points group at low zoom and split apart as you zoom in
             </p>
           </div>
           <GeoMapRenderer
             props={{
               title: "All Network Sites — Clustered View",
               center: CENTER,
-              zoom: 11,
+              zoom: 9,
               cluster: true,
               data: SAMPLE_SITES,
               latField: "latitude",
@@ -201,88 +125,26 @@ export default function MapDemoPage() {
           />
         </section>
 
-        {/* ── Shapes showcase ── */}
+        {/* ── Routes & arcs ── */}
         <section className="space-y-3">
           <div className="space-y-1">
-            <h2 className="text-lg font-medium">Shapes & Overlays</h2>
+            <h2 className="text-lg font-medium">Routes &amp; Arcs</h2>
             <p className="text-xs text-muted-foreground">
-              Circle · CircleMarker · Polyline · Polygon · Rectangle
+              Polyline routes and curved origin→destination arc connectors
             </p>
           </div>
           <GeoMapRenderer
             props={{
-              title: "Coverage Shapes Showcase",
-              center: [3.14, 101.69] as [number, number],
-              zoom: 12,
-              shapes: [
-                {
-                  type: "circle",
-                  center: [3.1579, 101.7116] as [number, number],
-                  radius: 1500,
-                  popup: "<b>Petronas Towers</b><br/>1.5 km coverage circle",
-                  tooltip: "Petronas 1.5 km radius",
-                },
-                {
-                  type: "circleMarker",
-                  center: [3.1528, 101.7038] as [number, number],
-                  radius: 12,
-                  popup: "<b>KL Tower</b><br/>Fixed-pixel circle marker",
-                  tooltip: "KL Tower marker",
-                },
-                {
-                  type: "polygon",
-                  positions: KL_COVERAGE_POLYGON,
-                  popup: "<b>KL City Coverage Zone</b>",
-                  tooltip: "KL Coverage Polygon",
-                },
-                {
-                  type: "polyline",
-                  positions: DUKE_ROUTE,
-                  popup: "<b>DUKE Highway Fibre Route</b>",
-                  tooltip: "DUKE Route",
-                },
-                {
-                  type: "rectangle",
-                  bounds: [
-                    [3.11, 101.67],
-                    [3.16, 101.73],
-                  ],
-                  popup: "<b>KL Bounding Rectangle</b>",
-                  tooltip: "KL Bounding Box",
-                },
-              ],
-              controls: { zoom: true, fullscreen: true },
-            }}
-          />
-        </section>
-
-        {/* ── Draw controls ── */}
-        <section className="space-y-3">
-          <div className="space-y-1">
-            <h2 className="text-lg font-medium">Draw Controls</h2>
-            <p className="text-xs text-muted-foreground">
-              Freehand drawing — marker · polyline · polygon · circle · rectangle · edit · delete · undo
-            </p>
-          </div>
-          <GeoMapRenderer
-            props={{
-              title: "Draw Tools Demo",
+              title: "Backhaul Routes & Flows",
               center: CENTER,
-              zoom: 12,
-              controls: {
-                zoom: true,
-                fullscreen: true,
-                draw: {
-                  marker: true,
-                  polyline: true,
-                  polygon: true,
-                  circle: true,
-                  rectangle: true,
-                  edit: true,
-                  delete: true,
-                  undo: true,
-                },
-              },
+              zoom: 11,
+              markers: [
+                { position: [3.1528, 101.7038], label: "KL Tower BTS", tooltip: "KL Tower BTS", color: "#2563eb" },
+                { position: [2.9213, 101.6559], label: "Cyberjaya", tooltip: "Cyberjaya", color: "#16a34a" },
+              ],
+              routes: [{ positions: DUKE_ROUTE, color: "#2563eb", width: 3, dashed: true }],
+              arcs: BACKHAUL_FLOWS,
+              controls: { zoom: true, fullscreen: true, compass: true },
             }}
           />
         </section>
