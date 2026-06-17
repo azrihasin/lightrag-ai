@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AiMastraModule } from '../ai/mastra/ai-mastra.module';
+import { MapTilesModule } from '../map-tiles/map-tiles.module';
+import { CoverageMapAgentService } from './agents/coverage-map.agent';
 import { ModelProvider } from '../chat/providers/model.provider';
 import { ContextAgentService } from './context-agent.service';
 import { TextToVizWorkflow } from './text-to-viz.workflow';
@@ -15,9 +17,10 @@ import { VisualizationAgentService } from './agents/visualization.agent';
 import { LightragSqlAgentService } from './agents/lightrag-sql.agent';
 
 @Module({
-  imports: [AiMastraModule],
+  imports: [AiMastraModule, MapTilesModule],
   providers: [
     ModelProvider,
+    CoverageMapAgentService,
     ContextAgentService,
     TextToVizWorkflow,
     AnalyticsWorkflowTool,

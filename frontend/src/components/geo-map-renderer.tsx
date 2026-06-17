@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { PMTilesOverlay, type PMTilesConfig } from "@/components/pmtiles-layers";
 import {
   Map,
   MapCircle,
@@ -92,6 +93,8 @@ export interface GeoMapProps {
   // Viewport
   center: LatLng;
   zoom?: number;
+  /** Coverage/congestion PMTiles vector overlays + week/layer controls. */
+  pmtiles?: PMTilesConfig;
   // Data-driven markers from SQL rows
   data?: Record<string, unknown>[];
   latField?: string;
@@ -255,6 +258,7 @@ export function GeoMapRenderer({ props }: { props: GeoMapProps }) {
     description,
     center,
     zoom = 13,
+    pmtiles,
     data,
     latField,
     lngField,
@@ -408,6 +412,7 @@ export function GeoMapRenderer({ props }: { props: GeoMapProps }) {
 
       <Map center={center} zoom={zoom} className="h-[500px] w-full rounded-md">
         {mapBody}
+        {pmtiles && <PMTilesOverlay config={pmtiles} />}
         {controlsNode}
       </Map>
 

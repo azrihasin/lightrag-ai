@@ -50,10 +50,35 @@ const drawConfig = z.object({
   undo: z.boolean().optional().nullable(),
 });
 
+// A single coverage/congestion PMTiles overlay layer.
+const pmtilesLayer = z.object({
+  key: z.string(),
+  label: z.string(),
+  category: z.string().optional().nullable(),
+  sourceLayer: z.string(),
+  url: z.string(),
+  color: z.string().optional().nullable(),
+});
+
+// Full PMTiles overlay config: every week's layer set + the active week/layers.
+// The week selector swaps weeks client-side (one week shown at a time); the
+// layer control toggles the active week's layers on/off.
+const pmtilesConfig = z.object({
+  week: z.string(),
+  activeKeys: z.array(z.string()),
+  weeks: z.array(
+    z.object({
+      week: z.string(),
+      layers: z.array(pmtilesLayer),
+    }),
+  ),
+});
+
 const geoMap = z.object({
   title: z.string().optional().nullable(),
   description: z.string().optional().nullable(),
   center: latLng,
+  pmtiles: pmtilesConfig.optional().nullable(),
   zoom: z.number().optional().nullable(),
   data: z.array(z.record(z.string(), z.union([z.string(), z.number(), z.null()]))).optional().nullable(),
   latField: z.string().optional().nullable(),

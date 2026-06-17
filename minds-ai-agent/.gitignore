@@ -17,6 +17,8 @@ lerna-debug.log*
 
 # Tests
 /coverage
+/map-tiles
+/maptiles
 /.nyc_output
 
 # IDEs and editors

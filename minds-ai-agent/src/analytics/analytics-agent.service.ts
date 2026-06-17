@@ -9,6 +9,7 @@ import { ValidateSqlAgentService } from './agents/validate-sql.agent';
 import { ExecuteSqlAgentService } from './agents/execute-sql.agent';
 import { SummarizeAgentService } from './agents/summarize.agent';
 import { VisualizationAgentService } from './agents/visualization.agent';
+import { CoverageMapAgentService } from './agents/coverage-map.agent';
 
 /** Subagent registry keys → friendly labels for reasoning blocks. */
 export const SUBAGENT_LABELS: Record<string, string> = {
@@ -19,6 +20,7 @@ export const SUBAGENT_LABELS: Record<string, string> = {
   execute_sql: 'Execute SQL (MariaDB)',
   summarize_result: 'Summarize result',
   generate_visualization: 'Generate visualization',
+  render_coverage_map: 'Render coverage map',
 };
 
 const MASTER_INSTRUCTIONS = [
@@ -29,7 +31,14 @@ const MASTER_INSTRUCTIONS = [
   'between, or while calling them. Do NOT announce steps. Do NOT write "Step 1:", "Now I will",',
   '"Let me", "I will analyze", or any narration of any kind. Call the subagents directly and silently.',
   '',
-  'For ANY question about data in the database (metrics, counts, lists, trends, breakdowns, geospatial data,',
+  'ROUTING — COVERAGE / CONGESTION MAPS: If the user asks to see/show/map network COVERAGE or',
+  'CONGESTION layers (e.g. "show 5G coverage", "show congestion", "map the TDD coverage", "coverage map',
+  'for week 8"), these are pre-built map tile overlays, NOT a database query. Delegate ONLY to',
+  'render_coverage_map (a single call) and then write your short final answer. Do NOT run the SQL pipeline',
+  '(no analyze_intent/retrieve_context/generate_sql/...) for these requests. render_coverage_map shows one',
+  'week at a time and supports multiple toggleable layers; pass every layer the user asked for.',
+  '',
+  'For ANY OTHER question about data in the database (metrics, counts, lists, trends, breakdowns, geospatial data,',
   '"how many", "show me", "what is the average", etc.) you MUST delegate through your subagents in this order:',
   '  analyze_intent → retrieve_context → generate_sql → validate_sql → execute_sql → summarize_result → generate_visualization',
   '',
@@ -82,6 +91,7 @@ export class AnalyticsAgentService implements OnModuleInit {
     private readonly executeSql: ExecuteSqlAgentService,
     private readonly summarize: SummarizeAgentService,
     private readonly visualization: VisualizationAgentService,
+    private readonly coverageMap: CoverageMapAgentService,
   ) {}
 
   onModuleInit(): void {
@@ -98,10 +108,11 @@ export class AnalyticsAgentService implements OnModuleInit {
         execute_sql: this.executeSql.agent,
         summarize_result: this.summarize.agent,
         generate_visualization: this.visualization.agent,
+        render_coverage_map: this.coverageMap.agent,
       },
     } as any);
 
-    this.logger.info('analyticsMaster initialized with 7 subagents');
+    this.logger.info('analyticsMaster initialized with 8 subagents');
   }
 
   getAgent(): Agent {

@@ -586,8 +586,11 @@ export class ChatService {
       // Emit the SQL table + visualization from the blackboard. The data table
       // renders whenever there are rows; the chart spec is optional (a flat list
       // is shown as a table only, with no forced chart).
+      // A coverage/congestion map sets run.spec with no SQL rows, so emit when
+      // there are rows OR a spec to render.
       const hasData = run.columns.length > 0;
-      if (hasData) this.emitRender(writer, renderId, run);
+      const hasRender = hasData || Boolean(run.spec);
+      if (hasRender) this.emitRender(writer, renderId, run);
 
       // For the agent phase the final text was suppressed during streaming —
       // emit it now as a single block after all reasoning blocks and data renders.
@@ -615,7 +618,7 @@ export class ChatService {
       await this.saveAgentTurn(threadId, resourceId, userText, {
         reasoningParts,
         finalText,
-        run: hasData ? run : undefined,
+        run: hasRender ? run : undefined,
         renderId,
       });
     } catch (err) {
@@ -777,6 +780,8 @@ export class ChatService {
       case 'generate_visualization':
         // vizChoice is set even when a table was chosen (no chart spec).
         return { componentType: run.spec?.componentType ?? run.vizChoice };
+      case 'render_coverage_map':
+        return { componentType: run.spec?.componentType ?? 'GeoMap' };
       default:
         return {};
     }
@@ -802,15 +807,19 @@ export class ChatService {
   private emitRender(writer: any, renderId: string, run: AnalyticsRunContext): void {
     const columnNames = run.columns.map((c) => c.name);
 
-    writer.write({
-      type: 'data-sql-table',
-      data: { runId: renderId, columns: columnNames, rowCount: run.rowCount },
-    });
-    writer.write({ type: 'sql-table-start', toolCallId: renderId, columns: columnNames });
-    for (const row of run.rows) {
-      writer.write({ type: 'sql-table-row', toolCallId: renderId, row });
+    // The SQL data table only when the run actually produced rows/columns. A
+    // coverage-map turn has a spec but no tabular data — skip the empty table.
+    if (columnNames.length > 0) {
+      writer.write({
+        type: 'data-sql-table',
+        data: { runId: renderId, columns: columnNames, rowCount: run.rowCount },
+      });
+      writer.write({ type: 'sql-table-start', toolCallId: renderId, columns: columnNames });
+      for (const row of run.rows) {
+        writer.write({ type: 'sql-table-row', toolCallId: renderId, row });
+      }
+      writer.write({ type: 'sql-table-end', toolCallId: renderId, rowCount: run.rowCount });
     }
-    writer.write({ type: 'sql-table-end', toolCallId: renderId, rowCount: run.rowCount });
 
     if (run.spec) {
       // ChatPage maps `{ componentType, props }` → json-render node `{ type, props }`.
@@ -828,6 +837,12 @@ export class ChatService {
    */
   private stripSpecData(spec: VisualizationSpec): VisualizationSpec {
     const props: Record<string, unknown> = { ...(spec.props ?? {}) };
+    // Coverage/congestion maps carry no database rows — only static PMTiles URLs
+    // + viewport. The persisted spec is self-contained and re-renders directly on
+    // history reload (there is no SQL to rerun), so keep center + pmtiles intact.
+    if (spec.componentType === 'GeoMap' && props.pmtiles) {
+      return { componentType: spec.componentType, props };
+    }
     delete props.data;
     delete props.center;
     if (props.dataState && typeof props.dataState === 'object') {
