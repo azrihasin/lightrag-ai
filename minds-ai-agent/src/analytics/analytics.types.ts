@@ -1,3 +1,9 @@
+import type { DuckdbRunScope } from '../duckdb/duckdb.service';
+import type { DatasetPlan, OutputColumn, ResolvedDatasetPlan } from './plan/dataset-plan.types';
+import type { ResultProfile } from './profile/result-profile.types';
+import type { SafeInsights } from './profile/safe-insights.types';
+import type { ResolvedVizPlan } from './viz/viz-plan.types';
+
 export type IntentAnalysis = {
   rawQuestion: string;
   intentSummary: string;
@@ -102,10 +108,43 @@ export type VisualizationSpec = {
  * through the LLM. Stored under {@link ANALYTICS_RUN_KEY}.
  */
 export interface AnalyticsRunContext {
-  /** SQL recorded by the generate_sql subagent (record_sql tool). */
+  /** Read-only MariaDB SELECT recorded by the generate_sql subagent (record_sql tool). */
   sql?: string;
   /** Whether validate_sql passed; populated by the validate_sql tool. */
   sqlValid?: boolean;
+
+  // ── DuckDB visualization scope ───────────────────────────────────────────────
+  /** Per-run DuckDB scratch scope (connection + scratch schema). Disposed at run end. */
+  duckdb?: DuckdbRunScope;
+  /** @deprecated legacy DatasetPlan pipeline — no longer populated. */
+  datasetPlan?: DatasetPlan;
+  /** @deprecated legacy DatasetPlan pipeline — no longer populated. */
+  resolvedPlan?: ResolvedDatasetPlan;
+  /**
+   * Output columns of analysis_dataset (alias + role + semantic type), inferred
+   * from the retrieved rows by DatasetIngestService and consumed by the profiler
+   * + viz-JSON compiler.
+   */
+  datasetOutputs?: OutputColumn[];
+  /** How many times record_dataset_plan ran this turn (bounded-retry ceiling). */
+  planAttempts?: number;
+  /**
+   * Why the dataset plan could not be prepared, in user-facing language (the
+   * validator's errors, or the attempt-limit message). Set by plan_dataset when
+   * record_dataset_plan fails so the generate_sql reasoning block and the final
+   * answer can state the actual reason instead of a generic "couldn't prepare".
+   */
+  planError?: string;
+  /** True once analysis_dataset has been materialized in DuckDB. */
+  analysisDatasetReady?: boolean;
+  /** The compiled DuckDB SELECT (for transparency in the reasoning feed). */
+  compiledSql?: string;
+  /** Metadata-only profile of analysis_dataset (no rows); set by execute_dataset. */
+  resultProfile?: ResultProfile;
+  /** Resolved visualization plan from the plan_visualization subagent. */
+  vizPlan?: ResolvedVizPlan;
+  /** Bounded approved aggregate facts for the summarizer (no rows). */
+  safeInsights?: SafeInsights;
   /**
    * How many times run_sql has been invoked this turn. Incremented by the
    * execute_sql tool and used to hard-cap the recovery retry loop (see

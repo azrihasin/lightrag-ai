@@ -16,7 +16,7 @@
  * 'table' kind records the choice but produces no spec — a flat list with
  * nothing meaningful to chart should be shown as a table, not a forced chart.
  */
-export type VizKind = 'xy' | 'pie' | 'map' | 'table';
+export type VizKind = 'xy' | 'pie' | 'map' | 'table' | 'kpi';
 
 export interface CatalogComponent {
   name: string;
@@ -51,7 +51,36 @@ export const VIZ_CATALOG: readonly CatalogComponent[] = [
 
   // ── Geospatial (mapcn / MapLibre GL) ─────────────────────────────────────────
   { name: 'GeoMap', kind: 'map', whenToUse: 'Rows carry real latitude/longitude coordinates and the question is about WHERE things are: store/site/tower locations, coverage points, customer or asset positions, incidents. Plots data-driven point markers (cluster them for larger sets). Rows that also pair an origin AND a destination coordinate (trips, shipments, transfers, flows between places) are drawn as curved arc connectors. Needs latField + lngField (and origin/destination lat/lng columns for flows).' },
+
+  // ── KPI (single headline number) ─────────────────────────────────────────────
+  { name: 'ChartRadialText', kind: 'kpi', whenToUse: 'A single headline aggregate value (one row, one metric): a total, count, or average with no breakdown. Shows the number large with an optional label.' },
 ] as const;
+
+/**
+ * Canonical renderer prop names each kind's compiled spec must include — the
+ * deterministic source of truth the viz validator + JSON compiler enforce.
+ */
+export const REQUIRED_FIELDS_BY_KIND: Record<VizKind, readonly string[]> = {
+  xy: ['title', 'data', 'xKey', 'series'],
+  pie: ['title', 'data', 'nameKey', 'valueKey'],
+  map: ['center', 'data', 'latField', 'lngField'],
+  kpi: ['title', 'value'],
+  table: [],
+};
+
+/** Number formats a chart value may declare (advisory; applied by the compiler). */
+export const ALLOWED_FORMATS = ['number', 'compact', 'currency', 'percent'] as const;
+/** Style/design options the DesignPlan may set (advisory). */
+export const ALLOWED_STYLES = ['default', 'minimal', 'detailed'] as const;
+
+export function requiredFieldsFor(kind: VizKind): readonly string[] {
+  return REQUIRED_FIELDS_BY_KIND[kind];
+}
+
+/** True when an xy component is a line/area trend (vs a bar comparison). */
+export function isLineLike(name: string): boolean {
+  return /line|area/i.test(name);
+}
 
 const BY_NAME = new Map(VIZ_CATALOG.map((c) => [c.name, c]));
 

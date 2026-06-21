@@ -9,6 +9,8 @@ import { MindsAgentService } from './agent/minds-agent.service';
 import { AnalyticsAgentService } from '../analytics/analytics-agent.service';
 import { TextToVizWorkflow } from '../analytics/text-to-viz.workflow';
 import type { ReexecuteResult } from '../analytics/text-to-viz.workflow';
+import { DatasetRerunService } from '../analytics/plan/dataset-rerun.service';
+import type { ResolvedVizPlan } from '../analytics/viz/viz-plan.types';
 import { analyticsRunStore } from '../analytics/analytics-run.store';
 import { createRunContext } from '../analytics/analytics.types';
 import {
@@ -29,6 +31,33 @@ const UI_PASSTHROUGH_TYPES = new Set([
   'reasoning-start', 'reasoning-delta', 'reasoning-end',
   'source', 'file', 'finish', 'error',
 ]);
+
+/**
+ * Remove GitHub-flavored markdown tables from assistant text. The query result is
+ * rendered separately as the shadcn data table, so a markdown table in the answer
+ * would show the same rows twice. Drops contiguous runs of pipe-rows (a header
+ * row, its `---|---` separator, and the body rows) and collapses the blank lines
+ * left behind. Non-table prose is untouched.
+ */
+function stripMarkdownTables(text: string): string {
+  if (!text.includes('|')) return text;
+  const lines = text.split('\n');
+  const kept: string[] = [];
+  let i = 0;
+  const isPipeRow = (l: string) => /^\s*\|.*\|\s*$/.test(l) || /\|.*\|/.test(l.trim());
+  const isSeparator = (l: string) => /^\s*\|?[\s:|-]*-[\s:|-]*\|?\s*$/.test(l) && l.includes('-');
+  while (i < lines.length) {
+    // A table is a header pipe-row immediately followed by a separator row.
+    if (i + 1 < lines.length && isPipeRow(lines[i]) && isSeparator(lines[i + 1])) {
+      i += 2;
+      while (i < lines.length && isPipeRow(lines[i])) i += 1;
+      continue;
+    }
+    kept.push(lines[i]);
+    i += 1;
+  }
+  return kept.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
 
 // ─── Thread history types ─────────────────────────────────────────────────────
 
@@ -73,6 +102,7 @@ export class ChatService {
     private readonly mindsAgent: MindsAgentService,
     private readonly analyticsAgentService: AnalyticsAgentService,
     private readonly workflow: TextToVizWorkflow,
+    private readonly datasetRerun: DatasetRerunService,
   ) {}
 
   // ── Thread history ──────────────────────────────────────────────────────────
@@ -174,27 +204,29 @@ export class ChatService {
       throw new NotFoundException(`Message ${messageId} not found in thread ${threadId}`);
     }
 
+    // Re-run the persisted read-only MariaDB SELECT, re-shaping the chart in
+    // DuckDB from the persisted resolved viz plan.
     const sql = msg.metadata?.['sql'];
     if (typeof sql !== 'string' || !sql.trim()) {
       throw new BadRequestException('This message has no SQL query to re-run');
     }
-
-    const spec = msg.metadata?.['visualizationSpec'] as VisualizationSpec | undefined;
-    this.logger.info({ threadId, messageId }, 'Re-running persisted query');
-    return this.workflow.reexecute(sql, spec);
+    const vizPlan = msg.metadata?.['vizPlan'] as ResolvedVizPlan | undefined;
+    this.logger.info({ threadId, messageId }, 'Re-running persisted query (MariaDB → DuckDB)');
+    return this.datasetRerun.reexecute(sql, vizPlan);
   }
 
   // ── Stream entry points ─────────────────────────────────────────────────────
 
   /**
    * General chat assistant. Routes to the master multi-agent network: the
-   * `analyticsMaster` supervisor delegates to its 7 subagents in order
+   * `analyticsMaster` supervisor delegates to its subagents in order
    * (analyze_intent → retrieve_context → generate_sql → validate_sql →
-   * execute_sql → summarize_result → generate_visualization). The new LightRAG
-   * pieces are folded into the network — retrieve_context pulls structured schema
-   * from LightRAG's `/query/data` endpoint, and generate_sql writes its query
-   * with the Enterprise Text-to-SQL procedure — so the turn produces a grounded,
-   * executed result with a data table and chart, not just SQL text.
+   * execute_sql → plan_visualization → summarize_result). retrieve_context pulls
+   * structured schema from LightRAG; generate_sql writes a grounded read-only
+   * MariaDB SELECT; validate_sql confirms it is safe; execute_sql runs it against
+   * MariaDB and loads the rows into a scoped DuckDB analysis_dataset, which is
+   * profiled (metadata only) and used to shape the chart — so the turn produces a
+   * grounded result with a data table and chart, and no agent ever sees raw rows.
    */
   stream(dto: ChatRequestDto, res: Response): void {
     const ctx = this.resolveStreamContext(dto);
@@ -556,6 +588,12 @@ export class ChatService {
         finalText = aggregateText;
       }
 
+      // The result already renders as the shadcn data table below the message, so
+      // a markdown table in the answer would show the same rows twice. The agent
+      // is instructed not to emit one, but strip any that slip through so only the
+      // single rendered table remains.
+      finalText = stripMarkdownTables(finalText);
+
       // Safety: close any reasoning block that opened but never got a result.
       // Finalize with a truthful outcome derived from whatever the blackboard holds.
       for (const [key, id] of openBlocks) {
@@ -606,7 +644,9 @@ export class ChatService {
         finalText =
           run.rowCount > 0
             ? `Returned ${run.rowCount} row${run.rowCount === 1 ? '' : 's'}. See the table and chart below.`
-            : 'No matching data was found for your question.';
+            : !run.sql?.trim()
+              ? "I couldn't prepare a query for this — the needed tables or columns weren't in the available schema context."
+              : 'No matching data was found for your question.';
         const textId = randomUUID();
         writer.write({ type: 'text-start', id: textId });
         writer.write({ type: 'text-delta', id: textId, delta: finalText });
@@ -632,6 +672,10 @@ export class ChatService {
       const message = err instanceof Error ? err.message : 'Agent error';
       this.logger.error({ threadId, err }, 'Agent stream error');
       writer.write({ type: 'error', errorText: message });
+    } finally {
+      // Tear down the per-run DuckDB scratch scope (drops analysis_dataset,
+      // closes the connection) regardless of how the turn ended.
+      await run.duckdb?.dispose().catch(() => {});
     }
   }
 
@@ -744,6 +788,8 @@ export class ChatService {
    * was recorded (e.g. a context gap where the step recorded an empty query).
    */
   private generatedSqlBlock(key: string, run: AnalyticsRunContext): string {
+    // The read-only MariaDB SELECT is recorded by generate_sql; surface it in
+    // that step's reasoning block so the user sees the exact query prepared.
     if (resolveStepKey(key) !== 'generate_sql') return '';
     const sql = run.sql?.trim();
     if (!sql) return '';
@@ -770,13 +816,16 @@ export class ChatService {
       case 'retrieve_context':
         return { referenceCount: run.contextReferences?.length };
       case 'generate_sql':
+        // A recorded SELECT is the success signal; an empty/absent query means
+        // the question couldn't be grounded in the retrieved schema context.
         return { sql: run.sql };
       case 'validate_sql':
         return { valid: run.sqlValid };
-      case 'execute_sql': {
-        const limit = Number(run.sql?.match(/\blimit\s+(\d+)/i)?.[1]) || undefined;
-        return { rowCount: run.rowCount, columnCount: run.columns.length, limit };
-      }
+      case 'execute_sql':
+        return {
+          rowCount: run.rowCount,
+          columnCount: run.columns.length,
+        };
       case 'generate_visualization':
         // vizChoice is set even when a table was chosen (no chart spec).
         return { componentType: run.spec?.componentType ?? run.vizChoice };
@@ -920,7 +969,10 @@ export class ChatService {
       metadata: data.run
         ? {
             workflow: 'analytics-network',
+            // Persist the executed read-only SELECT (not raw data) so the rerun
+            // card can re-run it against MariaDB and re-shape the chart on demand.
             sql: data.run.sql,
+            vizPlan: data.run.vizPlan,
             columns: data.run.columns,
             rowCount: data.run.rowCount,
             visualizationSpec: safeSpec,

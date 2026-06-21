@@ -40,6 +40,11 @@ export interface ReasoningStepOutput {
   limit?: number;
   componentType?: string;
   referenceCount?: number;
+  /**
+   * User-facing reason a step failed (e.g. why a query could not be prepared).
+   * Preferred over the subagent narration so the feed states the real cause.
+   */
+  reason?: string;
 }
 
 /**
@@ -103,7 +108,7 @@ export type StepKey =
 const RUNNING_TITLE: Record<StepKey, string> = {
   analyze_intent: 'Interpreting your request',
   retrieve_context: 'Finding relevant context',
-  generate_sql: 'Preparing a safe query',
+  generate_sql: 'Writing the SQL query',
   validate_sql: 'Checking the query is safe',
   execute_sql: 'Running the database query',
   summarize_result: 'Reviewing the returned records',
@@ -114,7 +119,7 @@ const RUNNING_TITLE: Record<StepKey, string> = {
 const COMPLETE_FALLBACK_TITLE: Record<StepKey, string> = {
   analyze_intent: 'Interpreted your request',
   retrieve_context: 'Checked available context',
-  generate_sql: 'Prepared a read-only query',
+  generate_sql: 'Prepared the SQL query',
   validate_sql: 'Checked the query is safe',
   execute_sql: 'Ran the database query',
   summarize_result: 'Reviewed the result',
@@ -125,7 +130,7 @@ const COMPLETE_FALLBACK_TITLE: Record<StepKey, string> = {
 const ERROR_TITLE: Record<StepKey, string> = {
   analyze_intent: "Couldn't interpret the request",
   retrieve_context: "Couldn't find enough context",
-  generate_sql: "Couldn't prepare a safe query",
+  generate_sql: "Couldn't write the query",
   validate_sql: 'Query failed safety checks',
   execute_sql: "The query couldn't run",
   summarize_result: "Couldn't review the result",
@@ -140,8 +145,11 @@ export function resolveStepKey(name: string): StepKey {
   if (/context|lightrag|schema|retriev/.test(n)) return 'retrieve_context';
   if (/validat/.test(n)) return 'validate_sql';
   if (/visuali|chart|graph|\bplot\b|\bmap\b|render/.test(n)) return 'generate_visualization';
-  if (/(generat|writ|prepar|build).*sql/.test(n)) return 'generate_sql';
-  if (/(execut|run).*(sql|quer|mariadb|database)|^sql/.test(n)) return 'execute_sql';
+  // execute_dataset / execute_sql (check before plan_dataset so "dataset" alone
+  // does not divert the execute step to the planning step).
+  if (/(execut|run).*(sql|quer|mariadb|database|dataset)|^sql/.test(n)) return 'execute_sql';
+  // plan_dataset / generate_sql: the query-preparation step.
+  if (/plan.*dataset|dataset|(generat|writ|prepar|build).*sql/.test(n)) return 'generate_sql';
   if (/summar/.test(n)) return 'summarize_result';
   return 'unknown';
 }
@@ -162,7 +170,7 @@ function failureClause(failedStepKey: StepKey): string {
     case 'validate_sql':
       return 'after the safety check failed';
     case 'generate_sql':
-      return "after the query couldn't be prepared";
+      return "after the query couldn't be written";
     case 'retrieve_context':
       return 'after the first lookup fell short';
     case 'analyze_intent':
@@ -379,18 +387,25 @@ export function formatReasoningStep(step: ReasoningStepInput): ReasoningStepDisp
       // so it isn't dressed as "Prepared a read-only query", and so the caller
       // opens a recovery on the following step.
       if (!sql) {
+        // Prefer the recorded reason (the grounding error / attempt-limit
+        // message) so the block states WHY, not just that it failed.
+        const reason = out.reason?.trim();
         return {
           title: ERROR_TITLE.generate_sql,
           body:
+            (reason ? `Could not write the query: ${reason}` : '') ||
             cleanNarration(result, 2) ||
-            'Could not prepare a query — the needed tables or columns were not in the available schema context.',
+            'Could not write the query — the needed tables or columns were not in the available schema context.',
           failed: true,
         };
       }
       if (recovery) {
         return { title: `Revised the query${bridge}`, body: `Rewrote it as a ${summarizeSql(sql)}.` };
       }
-      return { title: COMPLETE_FALLBACK_TITLE.generate_sql, body: `Prepared a ${summarizeSql(sql)}.` };
+      return {
+        title: COMPLETE_FALLBACK_TITLE.generate_sql,
+        body: `Prepared a ${summarizeSql(sql)}.`,
+      };
     }
 
     case 'validate_sql': {

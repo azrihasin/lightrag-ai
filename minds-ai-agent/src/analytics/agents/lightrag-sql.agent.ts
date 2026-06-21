@@ -153,6 +153,14 @@ Rules:
 - Do not infer joins from column name similarity alone — require documented evidence
 - If a join path is required but undocumented, state the gap explicitly
 
+### 3A. Do not re-filter a domain the table name already encodes
+
+When the user's domain term is already satisfied by the chosen table itself, the request is fully answered by selecting from that table — adding a row-level predicate to re-assert the same domain is redundant and frequently returns zero rows.
+
+- If a table name (or its documented description in {lightrag_context}) already scopes the data to the requested domain — e.g. the user asks for "4G sites" and the only matching table is \`site4g\`, or "active users" maps to a table documented as containing only active users — then the table IS the filter. Do NOT add a categorical WHERE predicate (e.g. \`Type_Map LIKE '%4G%'\`, \`Type LIKE '%LTE%'\`) to re-encode that same domain.
+- Only add such a categorical/technology/status filter when BOTH hold: (a) the column exists verbatim in {lightrag_context}, AND (b) the specific filter value is confirmed by a sample/distinct value in {lightrag_context}. Schema metadata alone (a column merely existing) is NOT evidence that a given label value exists in the data — never assume the literal you are filtering on (\`'%4G%'\`, \`'LTE'\`, etc.) is present without a confirmed sample value.
+- If you cannot confirm the filter value but believe a sub-filter may be intended, prefer the unfiltered query over the table and note the omitted filter under **## Assumptions** rather than guessing a predicate that may match nothing.
+
 ---
 
 ## STAGE 4 — DIVERSE SQL CANDIDATE SYNTHESIS (PARALLEL SCALING)
@@ -189,7 +197,7 @@ Run the selected candidate through this internal checklist. Fix every issue befo
 
 5. Grain — Does the aggregation level match the user's question? Could any join duplicate rows and inflate aggregated values? If so, apply DISTINCT, subquery pre-aggregation, or a deduplication strategy.
 
-6. Filters — Are all user-requested filters applied? Are mandatory business-logic filters (partition filters, active-record filters) applied where documented in {lightrag_context}?
+6. Filters — Are all user-requested filters applied? Are mandatory business-logic filters (partition filters, active-record filters) applied where documented in {lightrag_context}? Conversely, REMOVE any speculative predicate that re-encodes a domain the chosen table name already scopes (see Stage 3A), and remove any categorical/value filter whose literal is not confirmed by a sample value in {lightrag_context} — an unconfirmed predicate is the most common cause of a correct-table query returning zero rows.
 
 7. Dates — Are relative date expressions resolved using {current_date} and {user_timezone}? Are date range boundaries correct (inclusive vs exclusive)?
 

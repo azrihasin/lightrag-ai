@@ -173,13 +173,18 @@ function RenderMarker({ m }: { m: MarkerConfig }) {
   return (
     <MapMarker longitude={lng} latitude={lat}>
       <MarkerContent>
-        <div
-          className={cn(
-            "size-3.5 rounded-full border-2 border-white shadow-md",
-            !m.color && "bg-primary",
-          )}
-          style={m.color ? { backgroundColor: m.color } : undefined}
-        />
+        {/* Pin tip points at the coordinate: shift up by full height */}
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 16 16"
+          width={28}
+          height={28}
+          className="-translate-y-1/2 drop-shadow-md"
+          style={{ fill: m.color ?? "#e11d48" }}
+          aria-hidden
+        >
+          <path d="M8 0.16c-3.40050625 0.00385625 -6.15620625 2.75955625 -6.1600625 6.1600625 0 5.27105 5.60005625 9.25199375 5.8387625 9.41859375 0.1928875 0.135125 0.4497125 0.135125 0.64260625 0 0.2387 -0.1666 5.83875625 -4.14754375 5.83875625 -9.41859375C14.15620625 2.91955625 11.40050625 0.16385625 8 0.16Zm0 3.9200375c1.72436875 0 2.8021 1.8666875 1.93991875 3.3600375 -0.8621875 1.49334375 -3.01765 1.49334375 -3.8798375 0 -0.1966 -0.34053125 -0.30010625 -0.72680625 -0.30010625 -1.1200125 0 -1.23716875 1.00285625 -2.24008125 2.240025 -2.240025Z" />
+        </svg>
       </MarkerContent>
       {m.tooltip && <MarkerTooltip>{m.tooltip}</MarkerTooltip>}
       {hasPopup && (

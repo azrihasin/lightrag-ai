@@ -7,8 +7,8 @@
  *    them from the transport stream so AssistantUI never sees them.
  *  - Extracts `tool-output-delta` events → routes deltas to the tool output
  *    stream store; strips them from the transport stream.
- *  - Extracts `sql-*` and `jmespath-query` sidecar events → routes to their
- *    respective stores; strips them from the transport stream.
+ *  - Extracts `sql-*` sidecar events → routes to their respective stores;
+ *    strips them from the transport stream.
  *  - Extracts `progress` events → routes to useProgressStore; strips them.
  *  - Observes `start` / `finish` events to manage progress session lifecycle.
  *  - All other SSE events pass through to AssistantUI unchanged.
@@ -18,7 +18,6 @@ import { useProgressStore } from './progress-store';
 import { useToolAnnotationStore } from './tool-annotation-stream';
 import { useSqlTableStreamStore } from './sql-table-stream';
 import { useSqlGeneratedStore } from './sql-generated-store';
-import { useJmespathStore } from './jmespath-store';
 import { useAgentHarnessStore } from './agent-harness-store';
 import { AGENT_HARNESS_EVENT_TYPES } from './agent-events.types';
 
@@ -142,13 +141,6 @@ export function createStreamingFetch(): FetchFn {
                 useSqlGeneratedStore
                   .getState()
                   .setQuery(event['toolCallId'] as string, (event['sql'] as string) ?? '', (event['dialect'] as string) ?? 'postgres');
-                continue;
-              }
-
-              if (eventType === 'jmespath-query') {
-                useJmespathStore
-                  .getState()
-                  .setEntry(event['toolCallId'] as string, (event['query'] as string) ?? '', (event['component'] as string) ?? '');
                 continue;
               }
 

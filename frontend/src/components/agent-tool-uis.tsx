@@ -8,7 +8,6 @@ import { useSqlGeneratedStore } from "@/lib/sql-generated-store";
 import { FileTextIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Streamdown } from "streamdown";
-import { useJmespathStore } from "@/lib/jmespath-store";
 import { SqlDataTable } from "@/components/sql-data-table";
 import { CodeBlock } from "@/components/assistant-ui/code-block";
 import {
@@ -550,42 +549,19 @@ export const PrepareVisualizationUI: ToolCallMessagePartComponent = memo(
 );
 PrepareVisualizationUI.displayName = "PrepareVisualizationUI";
 
-function JmespathCodeBlock({ toolCallId, result }: { toolCallId?: string; result?: string }) {
-  const storeEntry = useJmespathStore(
-    (s) => (toolCallId ? (s.entries[toolCallId] ?? null) : null),
-  );
-
-  const query = storeEntry
-    ? storeEntry.query
-    : (() => {
-        const parsed = parseJson(result);
-        return typeof parsed.jmespathQuery === "string" ? parsed.jmespathQuery : undefined;
-      })();
-
-  if (!query) return null;
-
-  return (
-    <ChainOfThoughtItem>
-      <CodeBlock label="JMESPath Query" code={query} />
-    </ChainOfThoughtItem>
-  );
-}
-
 export const DecideVisualizationUI: ToolCallMessagePartComponent = memo(
-  ({ status, toolCallId, result }) => (
+  ({ status, toolCallId }) => (
     <AgentToolGroup
       label="Decide Visualization"
       status={status}
       toolCallId={toolCallId}
       icon={<Layers className="size-4" />}
-    >
-      <JmespathCodeBlock toolCallId={toolCallId} result={result} />
-    </AgentToolGroup>
+    />
   ),
 );
 DecideVisualizationUI.displayName = "DecideVisualizationUI";
 
-function JmespathResultCodeBlock({ result, status }: { result?: string; status: StatusType }) {
+function RenderSpecCodeBlock({ result, status }: { result?: string; status: StatusType }) {
   const isRunning = status?.type === "running";
 
   const dataSpec = useMemo(() => {
@@ -627,7 +603,7 @@ export const RenderVisualizationUI: ToolCallMessagePartComponent = memo(
       toolCallId={toolCallId}
       icon={<ImageIcon className="size-4" />}
     >
-      <JmespathResultCodeBlock result={result} status={status} />
+      <RenderSpecCodeBlock result={result} status={status} />
     </AgentToolGroup>
   ),
 );

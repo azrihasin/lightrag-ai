@@ -6,11 +6,13 @@ import { AppService } from './app.service';
 import { ChatModule } from './chat/chat.module';
 import { ChatHistoryModule } from './chat-history/chat-history.module';
 import { DatabaseModule } from './database/database.module';
+import { DuckdbModule } from './duckdb/duckdb.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     DatabaseModule,
+    DuckdbModule,
     LoggerModule.forRoot({
       pinoHttp: {
         level: process.env.LOG_LEVEL ?? 'info',

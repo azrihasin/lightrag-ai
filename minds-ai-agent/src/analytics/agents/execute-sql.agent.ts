@@ -1,4 +1,5 @@
 import { Injectable, Inject } from '@nestjs/common';
+import { InjectPinoLogger, PinoLogger } from 'nestjs-pino';
 import { Agent } from '@mastra/core/agent';
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
@@ -6,7 +7,12 @@ import { sql as drizzleSql } from 'drizzle-orm';
 import { MySql2Database } from 'drizzle-orm/mysql2';
 import { DRIZZLE } from '../../database/database.module';
 import { ModelProvider } from '../../chat/providers/model.provider';
+import { DuckdbService } from '../../duckdb/duckdb.service';
 import { currentRun } from '../analytics-run.store';
+import type { AnalyticsRunContext } from '../analytics.types';
+import { DatasetIngestService } from '../profile/dataset-ingest.service';
+import { ResultProfilerService } from '../profile/result-profiler.service';
+import { SafeInsightsService } from '../profile/safe-insights.service';
 import { validateReadOnlySql } from './validate-sql.agent';
 
 /**
@@ -20,7 +26,11 @@ const MAX_EXECUTE_ATTEMPTS = 2;
 
 /**
  * Subagent #5 — execute_sql. Runs the validated read-only query against the
- * MariaDB business database and records the rows/columns on the blackboard.
+ * MariaDB business database (via Drizzle), records the rows/columns on the
+ * blackboard, then loads those rows into the per-run DuckDB scratch scope so the
+ * profiler / viz compiler can shape the visualization. DuckDB never touches the
+ * source DB — retrieval is pure MariaDB SQL; DuckDB only ingests the result.
+ *
  * Privacy: ONLY the result structure (row count + column names/types) is
  * returned to the LLM — never the row values. The full result set reaches the
  * frontend out-of-band via the blackboard.
@@ -30,8 +40,13 @@ export class ExecuteSqlAgentService {
   readonly agent: Agent;
 
   constructor(
+    @InjectPinoLogger(ExecuteSqlAgentService.name) private readonly logger: PinoLogger,
     private readonly modelProvider: ModelProvider,
     @Inject(DRIZZLE) private readonly db: MySql2Database,
+    private readonly duckdb: DuckdbService,
+    private readonly ingest: DatasetIngestService,
+    private readonly profiler: ResultProfilerService,
+    private readonly safeInsights: SafeInsightsService,
   ) {
     this.agent = new Agent({
       id: 'execute_sql',
@@ -50,6 +65,34 @@ export class ExecuteSqlAgentService {
       model: this.modelProvider.getModel() as any,
       tools: { run_sql: this.runSqlTool() },
     });
+  }
+
+  /** Get-or-create the per-run DuckDB scratch scope (rows are ingested here). */
+  private async ensureScope(run: AnalyticsRunContext) {
+    if (!run.duckdb) run.duckdb = await this.duckdb.createScope();
+    return run.duckdb;
+  }
+
+  /**
+   * Load the retrieved rows into DuckDB and build the metadata-only profile +
+   * safe insights the viz / summarize steps consume. Best-effort: a failure here
+   * leaves the data table intact (it renders from run.rows) and degrades to no
+   * chart rather than failing the whole retrieval.
+   */
+  private async ingestAndProfile(run: AnalyticsRunContext): Promise<void> {
+    try {
+      const scope = await this.ensureScope(run);
+      const outputs = await this.ingest.ingest(scope, run.columns, run.rows);
+      run.datasetOutputs = outputs;
+      run.analysisDatasetReady = true;
+      run.resultProfile = await this.profiler.profile(scope, outputs);
+      run.safeInsights = await this.safeInsights.build(scope, run.resultProfile);
+    } catch (err) {
+      this.logger.warn({ err }, 'failed to ingest/profile retrieved rows in DuckDB');
+      run.analysisDatasetReady = false;
+      run.resultProfile = undefined;
+      run.safeInsights = undefined;
+    }
   }
 
   private runSqlTool() {
@@ -102,6 +145,8 @@ export class ExecuteSqlAgentService {
             run.rows = rows;
             run.columns = columns;
             run.rowCount = rows.length;
+            // Load the retrieved rows into DuckDB for profiling + chart shaping.
+            if (rows.length > 0) await this.ingestAndProfile(run);
           }
 
           return {

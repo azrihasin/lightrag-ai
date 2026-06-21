@@ -1,5 +1,6 @@
 {
   "permissions": {
+    "defaultMode": "bypassPermissions",
     "allow": [
       "Bash(npx tsc *)",
       "Bash(node -e \"const lg = require\\('@langchain/langgraph'\\); console.log\\(Object.keys\\(lg\\)\\);\")",
@@ -10,7 +11,9 @@
       "Bash(node -e \"const ai = require\\('ai'\\); console.log\\(typeof ai.tool, Object.keys\\(ai\\).filter\\(k=>k.includes\\('tool'\\)\\)\\)\")",
       "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\C00570\\\\Desktop\\\\lightrag-ai\\\\minds-ai-agent\\\\src\" -Recurse -File)",
       "Bash(Select-Object FullName)",
-      "Bash(Format-Table -AutoSize)"
+      "Bash(Format-Table -AutoSize)",
+      "mcp__code-review-graph__get_architecture_overview_tool",
+      "mcp__code-review-graph__semantic_search_nodes_tool"
     ]
   }
 }

@@ -15,11 +15,11 @@ import { CoverageMapAgentService } from './agents/coverage-map.agent';
 export const SUBAGENT_LABELS: Record<string, string> = {
   analyze_intent: 'Analyze intent',
   retrieve_context: 'Retrieve schema context (LightRAG)',
-  generate_sql: 'Generate SQL',
+  generate_sql: 'Generate SQL (MariaDB)',
   validate_sql: 'Validate SQL',
   execute_sql: 'Execute SQL (MariaDB)',
+  plan_visualization: 'Plan visualization',
   summarize_result: 'Summarize result',
-  generate_visualization: 'Generate visualization',
   render_coverage_map: 'Render coverage map',
 };
 
@@ -31,38 +31,42 @@ const MASTER_INSTRUCTIONS = [
   'between, or while calling them. Do NOT announce steps. Do NOT write "Step 1:", "Now I will",',
   '"Let me", "I will analyze", or any narration of any kind. Call the subagents directly and silently.',
   '',
-  'ROUTING — COVERAGE / CONGESTION MAPS: If the user asks to see/show/map network COVERAGE or',
-  'CONGESTION layers (e.g. "show 5G coverage", "show congestion", "map the TDD coverage", "coverage map',
-  'for week 8"), these are pre-built map tile overlays, NOT a database query. Delegate ONLY to',
-  'render_coverage_map (a single call) and then write your short final answer. Do NOT run the SQL pipeline',
-  '(no analyze_intent/retrieve_context/generate_sql/...) for these requests. render_coverage_map shows one',
-  'week at a time and supports multiple toggleable layers; pass every layer the user asked for.',
+  'ROUTING — COVERAGE / CONGESTION MAPS: Use render_coverage_map ONLY when the user asks for the',
+  'network COVERAGE or CONGESTION heat overlay itself (e.g. "show 5G coverage", "show congestion",',
+  '"map the TDD coverage", "coverage map for week 8"). These are pre-built tile overlays, NOT a',
+  'database query. Delegate ONLY to render_coverage_map (a single call), then write your short final',
+  'answer. render_coverage_map shows one week at a time and supports multiple toggleable layers; pass',
+  'every layer the user asked for. It does NOT plot individual records.',
+  '',
+  'ROUTING — PLOTTING RECORDS ON A MAP: If the user asks to list/show/plot specific SITES, CELLS,',
+  'LOCATIONS, or any records AS POINTS/MARKERS on a map (e.g. "list 5G sites and show them on the map",',
+  '"plot the sites in Selangor", "where are the congested cells"), this IS a database query — run the',
+  'FULL data pipeline below. Do NOT use render_coverage_map (it draws no markers). The generate_sql step',
+  'must select the latitude and longitude columns so plan_visualization can render a',
+  'GeoMap with one marker per row. The keyword "5G" or "map" alone does NOT mean coverage.',
   '',
   'For ANY OTHER question about data in the database (metrics, counts, lists, trends, breakdowns, geospatial data,',
   '"how many", "show me", "what is the average", etc.) you MUST delegate through your subagents in this order:',
-  '  analyze_intent → retrieve_context → generate_sql → validate_sql → execute_sql → summarize_result → generate_visualization',
+  '  analyze_intent → retrieve_context → generate_sql → validate_sql → execute_sql → plan_visualization → summarize_result',
   '',
   'Call each subagent in order, normally once each. Pass each subagent what it needs from the previous steps.',
-  'If validate_sql reports the query is unsafe, stop and explain — do not execute.',
-  'When asked for a LIST of records, remember the SQL agent will cap it at 10 rows by default.',
+  'generate_sql writes a read-only MariaDB SELECT; validate_sql confirms it is safe; execute_sql runs it against',
+  'MariaDB and loads the rows into DuckDB for the visualization step.',
   '',
-  'RECOVERY — if a step fails (e.g. execute_sql errors on a missing column), do not give up and do not',
+  'RECOVERY — if a step fails (e.g. execute_sql errors on a bad query), do not give up and do not',
   'jump ahead. Silently retrace the minimum needed to recover: recheck the schema with retrieve_context,',
-  'revise the query with generate_sql, re-validate, then re-run execute_sql. Keep retries silent like every',
-  'other step.',
-  'RETRY LIMIT — retry the query AT MOST ONCE (two execute_sql attempts total). If execute_sql still fails',
-  'after the second attempt, or it reports the retry limit was reached, STOP retrying and report plainly that',
-  'the data could not be retrieved. Never loop the recovery steps beyond this.',
+  'rewrite the query with generate_sql, re-validate with validate_sql, then re-run execute_sql. Keep retries',
+  'silent like every other step.',
+  'RETRY LIMIT — retry the query AT MOST ONCE (two execute_sql attempts total). If execute_sql still',
+  'fails after the second attempt, or it reports the retry limit was reached, STOP retrying and report plainly',
+  'that the data could not be retrieved. Never loop the recovery steps beyond this.',
   '',
   'After ALL subagents have finished, write ONE SHORT final answer (1-3 sentences) based on the summary.',
   'Summarize ONLY the final verified outcome. Do NOT replay the failed or retried steps; only mention a',
-  'revision if it materially changes what the user should trust about the answer (e.g. a column they named',
-  'does not exist). Describe any failure in plain, user-facing terms — never expose SQL errors, stack traces,',
-  'or raw backend details.',
-  'Do NOT restate the raw rows, the SQL, or the chart spec — those are already shown to the user.',
+  'revision if it materially changes what the user should trust about the answer.',
+  'Do NOT restate the raw rows, the plan, or the chart spec — those are already shown to the user.',
   'NEVER format any part of your answer as a markdown table (no `|` columns, no `---` separator rows).',
-  'The result table is rendered separately below your message; repeating it as a markdown table shows the',
-  'same data twice. Refer to the figures in prose only.',
+  'The result table is rendered separately below your message; repeating it shows the same data twice.',
   'If the result is shown as a table (a flat list with nothing meaningful to chart), you may note that a',
   'table is the clearest view; do not claim a chart was produced when none was.',
   'Do NOT add any closing remarks or meta-commentary about the steps you took.',
@@ -72,10 +76,12 @@ const MASTER_INSTRUCTIONS = [
 
 /**
  * The master multi-agent network. One supervisor `Agent` that delegates to the
- * seven analytics subagents (exposed as `agent-<id>` tools). The LLM drives the
- * flow; subagents share row/spec data out-of-band via the run blackboard
- * (see analytics-run.store.ts). Runs WITHOUT Mastra memory — ChatService
- * persists the turn manually to MongoDB.
+ * analytics subagents (exposed as `agent-<id>` tools). The LLM drives the flow;
+ * subagents share data out-of-band via the run blackboard (analytics-run.store).
+ * Data is RETRIEVED with a read-only MariaDB SELECT (via Drizzle); DuckDB is used
+ * ONLY to ingest the retrieved rows and shape/profile the visualization. The LLM
+ * only ever sees metadata. Runs WITHOUT Mastra memory — ChatService persists the
+ * turn manually to MongoDB.
  */
 @Injectable()
 export class AnalyticsAgentService implements OnModuleInit {
@@ -106,13 +112,13 @@ export class AnalyticsAgentService implements OnModuleInit {
         generate_sql: this.generateSql.agent,
         validate_sql: this.validateSql.agent,
         execute_sql: this.executeSql.agent,
+        plan_visualization: this.visualization.agent,
         summarize_result: this.summarize.agent,
-        generate_visualization: this.visualization.agent,
         render_coverage_map: this.coverageMap.agent,
       },
     } as any);
 
-    this.logger.info('analyticsMaster initialized with 8 subagents');
+    this.logger.info('analyticsMaster initialized with MariaDB SQL retrieval + DuckDB visualization pipeline');
   }
 
   getAgent(): Agent {

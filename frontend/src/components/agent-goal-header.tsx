@@ -47,7 +47,7 @@ function StepDelta({ step }: { step: AgentStep }) {
   const { textDelta, status } = step;
   if (!textDelta) return null;
 
-  // Code-block output (SQL, JMESPath inline code) — keep visible after completion
+  // Code-block output (e.g. SQL) — keep visible after completion
   if (textDelta.startsWith("```")) {
     const lang = textDelta.match(/^```(\w*)/)?.[1] ?? "";
     const code = textDelta.replace(/^```\w*\n?/, "").replace(/\n?```$/, "");
@@ -62,17 +62,6 @@ function StepDelta({ step }: { step: AgentStep }) {
           {code}
         </pre>
       </div>
-    );
-  }
-
-  // Inline code (JMESPath expression wrapped in backticks)
-  if (textDelta.startsWith("JMESPath: `") && textDelta.endsWith("`")) {
-    const expr = textDelta.slice("JMESPath: `".length, -1);
-    return (
-      <p className="pl-5 mt-0.5 text-[11px] text-muted-foreground/70 leading-tight">
-        <span className="text-muted-foreground/50">JMESPath: </span>
-        <code className="font-mono text-amber-300/80 bg-muted/30 px-1 rounded">{expr}</code>
-      </p>
     );
   }
 
