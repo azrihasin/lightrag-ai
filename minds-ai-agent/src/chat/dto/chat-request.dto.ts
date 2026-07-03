@@ -72,6 +72,12 @@ export const ChatRequestSchema = z.object({
   // Sent by the frontend and stored on every Mastra thread + message.
   resourceId: z.string().optional(),
   enableUiDiscovery: z.boolean().optional().default(true),
+  // Files uploaded via POST /api/files/upload before this message was sent.
+  // ChatService appends a marker naming these so the master agent knows to
+  // call the analyze_data tool instead of the database SQL pipeline.
+  attachments: z
+    .array(z.object({ fileId: z.string(), filename: z.string().optional() }))
+    .optional(),
 }).passthrough();
 
 export type MessageDto = z.infer<typeof MessageSchema>;

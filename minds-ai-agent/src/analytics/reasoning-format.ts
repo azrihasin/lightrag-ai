@@ -101,6 +101,7 @@ export type StepKey =
   | 'generate_sql'
   | 'validate_sql'
   | 'execute_sql'
+  | 'analyze_data'
   | 'summarize_result'
   | 'generate_visualization'
   | 'unknown';
@@ -111,6 +112,7 @@ const RUNNING_TITLE: Record<StepKey, string> = {
   generate_sql: 'Writing the SQL query',
   validate_sql: 'Checking the query is safe',
   execute_sql: 'Running the database query',
+  analyze_data: 'Analyzing the data',
   summarize_result: 'Reviewing the returned records',
   generate_visualization: 'Choosing how to present the result',
   unknown: 'Working through this step',
@@ -122,6 +124,7 @@ const COMPLETE_FALLBACK_TITLE: Record<StepKey, string> = {
   generate_sql: 'Prepared the SQL query',
   validate_sql: 'Checked the query is safe',
   execute_sql: 'Ran the database query',
+  analyze_data: 'Analyzed the data',
   summarize_result: 'Reviewed the result',
   generate_visualization: 'Chose how to present the result',
   unknown: 'Completed this step',
@@ -133,6 +136,7 @@ const ERROR_TITLE: Record<StepKey, string> = {
   generate_sql: "Couldn't write the query",
   validate_sql: 'Query failed safety checks',
   execute_sql: "The query couldn't run",
+  analyze_data: "Couldn't analyze the data",
   summarize_result: "Couldn't review the result",
   generate_visualization: "Couldn't choose a visualization",
   unknown: "This step didn't complete",
@@ -145,6 +149,9 @@ export function resolveStepKey(name: string): StepKey {
   if (/context|lightrag|schema|retriev/.test(n)) return 'retrieve_context';
   if (/validat/.test(n)) return 'validate_sql';
   if (/visuali|chart|graph|\bplot\b|\bmap\b|render/.test(n)) return 'generate_visualization';
+  // analyze_dataset: the optional post-SQL DuckDB transform step. Checked before
+  // the dataset/execute branches so "analyze_dataset" isn't taken for the SQL step.
+  if (/analy[sz]e[_\s-]*data|transform/.test(n)) return 'analyze_data';
   // execute_dataset / execute_sql (check before plan_dataset so "dataset" alone
   // does not divert the execute step to the planning step).
   if (/(execut|run).*(sql|quer|mariadb|database|dataset)|^sql/.test(n)) return 'execute_sql';
@@ -457,6 +464,22 @@ export function formatReasoningStep(step: ReasoningStepInput): ReasoningStepDisp
       return {
         title: `${COMPLETE_FALLBACK_TITLE.execute_sql}${revised}`,
         body: cleanNarration(result, 2) || 'Completed the query.',
+      };
+    }
+
+    case 'analyze_data': {
+      const { rowCount, columnCount } = out;
+      // The step is optional and may run without applying a transform. When it
+      // did produce a result, report the shape; otherwise fall back to narration.
+      if (typeof rowCount === 'number') {
+        let detail = `Computed a result of ${plural(rowCount, 'row')}`;
+        if (columnCount) detail += ` across ${plural(columnCount, 'column')}`;
+        detail += '.';
+        return { title: `Analyzed the data into ${plural(rowCount, 'row')}`, body: detail };
+      }
+      return {
+        title: COMPLETE_FALLBACK_TITLE.analyze_data,
+        body: cleanNarration(result, 2) || 'Reviewed whether further computation was needed.',
       };
     }
 

@@ -7,9 +7,11 @@ import { ContextAgentNetworkService } from './agents/context.agent';
 import { GenerateSqlAgentService } from './agents/generate-sql.agent';
 import { ValidateSqlAgentService } from './agents/validate-sql.agent';
 import { ExecuteSqlAgentService } from './agents/execute-sql.agent';
+import { AnalyzeDatasetAgentService } from './agents/analyze-dataset.agent';
 import { SummarizeAgentService } from './agents/summarize.agent';
 import { VisualizationAgentService } from './agents/visualization.agent';
 import { CoverageMapAgentService } from './agents/coverage-map.agent';
+import { DataAnalysisTool } from '../ai/mastra/tools/data-analysis.tool';
 
 /** Subagent registry keys → friendly labels for reasoning blocks. */
 export const SUBAGENT_LABELS: Record<string, string> = {
@@ -18,6 +20,7 @@ export const SUBAGENT_LABELS: Record<string, string> = {
   generate_sql: 'Generate SQL (MariaDB)',
   validate_sql: 'Validate SQL',
   execute_sql: 'Execute SQL (MariaDB)',
+  analyze_dataset: 'Analyze data (DuckDB)',
   plan_visualization: 'Plan visualization',
   summarize_result: 'Summarize result',
   render_coverage_map: 'Render coverage map',
@@ -30,6 +33,19 @@ const MASTER_INSTRUCTIONS = [
   'CRITICAL RULE — SILENT DELEGATION: When you call subagents, you MUST NOT output ANY text before,',
   'between, or while calling them. Do NOT announce steps. Do NOT write "Step 1:", "Now I will",',
   '"Let me", "I will analyze", or any narration of any kind. Call the subagents directly and silently.',
+  '',
+  'ROUTING — USER-SUPPLIED DATA (code interpreter): Use the analyze_data tool ONCE, instead of the',
+  'database SQL subagent pipeline, whenever the user gives you their OWN data to inspect / clean /',
+  'filter / group / aggregate / compute statistics on. This covers three sources:',
+  '  1. An uploaded file or pasted dataset — a line like "[Attached dataset(s): fileId=... name=...]"',
+  '     appears, or the user clearly means a file/spreadsheet they attached ("this CSV", "the file I',
+  '     uploaded"). Pass that fileId to analyze_data.',
+  '  2. Raw JSON the user pasted — this is registered for you as an inline dataset and ALSO shows up in',
+  '     the "[Attached dataset(s): ...]" marker with a fileId; pass that fileId.',
+  '  3. A result set the user wants analyzed further via a read-only SQL query they provide — pass that',
+  '     SELECT to analyze_data as `sql` (do NOT also pass a fileId).',
+  'Pass EXACTLY ONE of fileId or sql, plus the user\'s full question. analyze_data loads the data into',
+  'its own DuckDB table and answers directly with a table and (when useful) a chart.',
   '',
   'ROUTING — COVERAGE / CONGESTION MAPS: Use render_coverage_map ONLY when the user asks for the',
   'network COVERAGE or CONGESTION heat overlay itself (e.g. "show 5G coverage", "show congestion",',
@@ -47,11 +63,18 @@ const MASTER_INSTRUCTIONS = [
   '',
   'For ANY OTHER question about data in the database (metrics, counts, lists, trends, breakdowns, geospatial data,',
   '"how many", "show me", "what is the average", etc.) you MUST delegate through your subagents in this order:',
-  '  analyze_intent → retrieve_context → generate_sql → validate_sql → execute_sql → plan_visualization → summarize_result',
+  '  analyze_intent → retrieve_context → generate_sql → validate_sql → execute_sql → [analyze_dataset?] → plan_visualization → summarize_result',
   '',
   'Call each subagent in order, normally once each. Pass each subagent what it needs from the previous steps.',
   'generate_sql writes a read-only MariaDB SELECT; validate_sql confirms it is safe; execute_sql runs it against',
   'MariaDB and loads the rows into DuckDB for the visualization step.',
+  '',
+  'OPTIONAL STEP — analyze_dataset (DuckDB): AFTER execute_sql succeeds and BEFORE plan_visualization, call',
+  'analyze_dataset ONLY when the question needs computation beyond what the query already returned — e.g. group',
+  'and aggregate, compute averages/rates/percentiles/statistics, derive a new column, rank, filter outliers, or',
+  'pivot. It transforms the retrieved dataset in DuckDB and that analyzed result is what gets visualized and',
+  'summarized. SKIP it when the query result already answers the question directly (a plain list or a value the',
+  'SQL already computed) — do NOT call it just to pass the data through.',
   '',
   'RECOVERY — if a step fails (e.g. execute_sql errors on a bad query), do not give up and do not',
   'jump ahead. Silently retrace the minimum needed to recover: recheck the schema with retrieve_context,',
@@ -95,9 +118,11 @@ export class AnalyticsAgentService implements OnModuleInit {
     private readonly generateSql: GenerateSqlAgentService,
     private readonly validateSql: ValidateSqlAgentService,
     private readonly executeSql: ExecuteSqlAgentService,
+    private readonly analyzeDataset: AnalyzeDatasetAgentService,
     private readonly summarize: SummarizeAgentService,
     private readonly visualization: VisualizationAgentService,
     private readonly coverageMap: CoverageMapAgentService,
+    private readonly dataAnalysis: DataAnalysisTool,
   ) {}
 
   onModuleInit(): void {
@@ -112,9 +137,13 @@ export class AnalyticsAgentService implements OnModuleInit {
         generate_sql: this.generateSql.agent,
         validate_sql: this.validateSql.agent,
         execute_sql: this.executeSql.agent,
+        analyze_dataset: this.analyzeDataset.agent,
         plan_visualization: this.visualization.agent,
         summarize_result: this.summarize.agent,
         render_coverage_map: this.coverageMap.agent,
+      },
+      tools: {
+        analyze_data: this.dataAnalysis.asTool(),
       },
     } as any);
 
