@@ -7,6 +7,7 @@ import { ChatModule } from './chat/chat.module';
 import { ChatHistoryModule } from './chat-history/chat-history.module';
 import { DatabaseModule } from './database/database.module';
 import { DuckdbModule } from './duckdb/duckdb.module';
+import { FilesModule } from './files/files.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { DuckdbModule } from './duckdb/duckdb.module';
     }),
     ChatHistoryModule,
     ChatModule,
+    FilesModule,
   ],
   controllers: [AppController],
   providers: [AppService],

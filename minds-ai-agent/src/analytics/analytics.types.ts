@@ -112,6 +112,14 @@ export interface AnalyticsRunContext {
   sql?: string;
   /** Whether validate_sql passed; populated by the validate_sql tool. */
   sqlValid?: boolean;
+  /**
+   * Set by the analyze_data tool when this turn answered via the code-interpreter
+   * path (over an uploaded file, pasted JSON, or a SQL result set) rather than the
+   * standard MariaDB pipeline. `sql` in that case is DuckDB SQL against a per-run
+   * scratch table, not a re-runnable MariaDB SELECT — callers must not offer the
+   * rerun-against-MariaDB action for these turns.
+   */
+  interpreterSource?: 'file' | 'json' | 'sql';
 
   // ── DuckDB visualization scope ───────────────────────────────────────────────
   /** Per-run DuckDB scratch scope (connection + scratch schema). Disposed at run end. */
@@ -137,6 +145,12 @@ export interface AnalyticsRunContext {
   planError?: string;
   /** True once analysis_dataset has been materialized in DuckDB. */
   analysisDatasetReady?: boolean;
+  /**
+   * True once the optional analyze_dataset subagent applied a DuckDB
+   * transformation, replacing analysis_dataset with the analyzed result (rows,
+   * columns, profile, and safeInsights are all re-derived from it).
+   */
+  analysisApplied?: boolean;
   /** The compiled DuckDB SELECT (for transparency in the reasoning feed). */
   compiledSql?: string;
   /** Metadata-only profile of analysis_dataset (no rows); set by execute_dataset. */

@@ -31,6 +31,7 @@
     "@nestjs/core": "^11.0.1",
     "@nestjs/platform-express": "^11.0.1",
     "@nestjs/swagger": "^11.4.1",
+    "@types/multer": "^2.2.0",
     "ai": "^6.0.168",
     "apache-arrow": "^21.1.0",
     "drizzle-orm": "^0.45.2",
@@ -44,6 +45,7 @@
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "swagger-ui-express": "^5.0.1",
+    "xlsx": "^0.18.5",
     "zod": "^4.3.6"
   },
   "devDependencies": {

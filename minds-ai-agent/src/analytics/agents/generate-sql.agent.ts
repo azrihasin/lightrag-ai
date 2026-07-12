@@ -32,7 +32,7 @@ const TOOL_CONTRACT = [
   '- Build the query using ONLY table and column names you can point to verbatim in the retrieved context, copying their exact spelling (including underscores and casing).',
   '- SELECT/WITH only. No INSERT/UPDATE/DELETE/DROP/ALTER/TRUNCATE/CREATE/GRANT/REVOKE/MERGE/CALL/EXEC.',
   '- Use explicit column names; avoid SELECT *.',
-  '- When the user asks for a LIST of rows (not an aggregate), ALWAYS add `LIMIT 10`, UNLESS the user explicitly requested a different number of rows. Pure aggregates (COUNT/SUM/AVG with no row listing) need no LIMIT.',
+  '- When the user asks for a LIST of rows (not an aggregate), ALWAYS add `LIMIT 10`, UNLESS the user explicitly requested a different number of rows. Pure aggregates (COUNT/SUM/AVG with no row listing) need no LIMIT. The LIMIT is REQUIRED to protect the database: without it the query would pull an unbounded number of rows and read far too much data from the database, so the LIMIT keeps the result set small and the read cheap.',
   '- Begin your reply with ONE short sentence telling the user what you are about to do (e.g. "Writing the SQL query for this.").',
   'You MUST call record_sql with the final SQL string, and it must pass the grounding check (recorded:true) before you finish.',
 ].join('\n');

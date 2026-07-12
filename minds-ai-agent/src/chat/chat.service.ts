@@ -6,6 +6,7 @@ import type { MastraMessageContentV2 } from '@mastra/core/agent';
 import type { Response } from 'express';
 import { randomUUID } from 'node:crypto';
 import { MindsAgentService } from './agent/minds-agent.service';
+import { FileStoreService } from '../files/file-store.service';
 import { AnalyticsAgentService } from '../analytics/analytics-agent.service';
 import { TextToVizWorkflow } from '../analytics/text-to-viz.workflow';
 import type { ReexecuteResult } from '../analytics/text-to-viz.workflow';
@@ -59,6 +60,59 @@ function stripMarkdownTables(text: string): string {
   return kept.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
+/**
+ * Detect a JSON dataset the user pasted into the chat: a fenced ```json block
+ * (preferred — unambiguous), otherwise a whole message that is itself a JSON
+ * array/object. Returns the parsed value plus the message text with the JSON
+ * removed, or null when no dataset-shaped JSON is present. Conservative on
+ * purpose so ordinary prose containing braces is never treated as data.
+ */
+export function extractInlineJson(
+  text: string,
+): { value: unknown; strippedText: string } | null {
+  const fence = /```(?:json)?\s*([\[{][\s\S]*?[\]}])\s*```/i.exec(text);
+  if (fence) {
+    try {
+      const value = JSON.parse(fence[1]);
+      if (isDatasetShaped(value)) {
+        return { value, strippedText: text.replace(fence[0], '').trim() };
+      }
+    } catch {
+      /* not valid JSON — fall through */
+    }
+  }
+
+  const trimmed = text.trim();
+  if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
+    try {
+      const value = JSON.parse(trimmed);
+      if (isDatasetShaped(value)) return { value, strippedText: '' };
+    } catch {
+      /* not a bare JSON message */
+    }
+  }
+  return null;
+}
+
+/** A JSON value worth treating as a dataset: a non-empty array, or an object. */
+function isDatasetShaped(value: unknown): boolean {
+  if (Array.isArray(value)) return value.length > 0;
+  return typeof value === 'object' && value !== null;
+}
+
+/** Coerce a parsed JSON dataset into an array of row objects for DuckDB. */
+export function normalizeToRows(value: unknown): Record<string, unknown>[] {
+  if (Array.isArray(value)) {
+    return value.map((item) =>
+      item !== null && typeof item === 'object' && !Array.isArray(item)
+        ? (item as Record<string, unknown>)
+        : { value: item },
+    );
+  }
+  if (value !== null && typeof value === 'object') return [value as Record<string, unknown>];
+  return [];
+}
+
 // ─── Thread history types ─────────────────────────────────────────────────────
 
 export interface MastraThreadSummary {
@@ -93,6 +147,7 @@ interface StreamContext {
   threadId: string;
   resourceId: string;
   userText: string;
+  attachments?: Array<{ fileId: string; filename?: string }>;
 }
 
 @Injectable()
@@ -103,6 +158,7 @@ export class ChatService {
     private readonly analyticsAgentService: AnalyticsAgentService,
     private readonly workflow: TextToVizWorkflow,
     private readonly datasetRerun: DatasetRerunService,
+    private readonly fileStore: FileStoreService,
   ) {}
 
   // ── Thread history ──────────────────────────────────────────────────────────
@@ -287,7 +343,43 @@ export class ChatService {
       threadId,
       resourceId: dto.resourceId ?? 'anonymous',
       userText: [...dto.messages].reverse().find(m => m.role === 'user')?.content ?? '',
+      attachments: dto.attachments,
     };
+  }
+
+  /**
+   * The prompt sent to the master agent: the user's text plus a marker naming
+   * any datasets to analyze — files uploaded via POST /api/files/upload AND any
+   * raw JSON the user pasted inline (detected here, registered as an inline
+   * dataset, and stripped from the prompt so the model doesn't re-serialize it).
+   * The marker is never persisted or shown — `ctx.userText` (the original text)
+   * is what's saved as the user message.
+   */
+  private async resolveAgentPrompt(ctx: StreamContext): Promise<string> {
+    const attachments = [...(ctx.attachments ?? [])];
+    let text = ctx.userText;
+
+    // Inline JSON pasted into the chat input → register as a dataset so the
+    // analyze_data tool loads it by fileId (same path as an uploaded file).
+    const extracted = extractInlineJson(text);
+    if (extracted) {
+      try {
+        const rows = normalizeToRows(extracted.value);
+        if (rows.length > 0) {
+          const record = await this.fileStore.saveJsonRows(rows, ctx.threadId);
+          attachments.push({ fileId: record.fileId, filename: record.originalName });
+          text = extracted.strippedText.trim() || 'Analyze the attached dataset.';
+        }
+      } catch (err) {
+        this.logger.warn({ threadId: ctx.threadId, err }, 'failed to register pasted JSON dataset');
+      }
+    }
+
+    if (!attachments.length) return text;
+    const files = attachments
+      .map((a) => `fileId=${a.fileId}${a.filename ? ` name=${a.filename}` : ''}`)
+      .join(', ');
+    return `${text}\n\n[Attached dataset(s): ${files}]`;
   }
 
   // ── Workflow path (analytics page → text-to-viz) ────────────────────────────
@@ -454,6 +546,10 @@ export class ChatService {
     try {
       const agent = this.analyticsAgentService.getAgent();
 
+      // Resolve the prompt before streaming: register any pasted-JSON dataset and
+      // build the marker naming attached datasets for the analyze_data tool.
+      const agentPrompt = await this.resolveAgentPrompt(ctx);
+
       // Live sink: the retrieve_context tool streams the raw LightRAG response
       // here chunk-by-chunk. We append each chunk into a ```json fence inside the
       // step's open reasoning block so the user watches the endpoint response
@@ -481,7 +577,7 @@ export class ChatService {
       await analyticsRunStore.run(run, async () => {
         // Pass the abort signal so a client Stop tears down the agent loop: the
         // master agent stops delegating, and the in-flight LightRAG fetch aborts.
-        const agentResult = await agent.stream(userText, { maxSteps: 40, abortSignal: signal });
+        const agentResult = await agent.stream(agentPrompt, { maxSteps: 40, abortSignal: signal });
 
         for await (const rawChunk of agentResult.fullStream) {
           if (!rawChunk || typeof rawChunk !== 'object') continue;
@@ -490,19 +586,24 @@ export class ChatService {
           const payload = (chunk['payload'] as Record<string, unknown>) ?? {};
           const toolName = payload['toolName'] as string | undefined;
 
-          // Subagent call lifecycle → one reasoning block per subagent.
-          if (type === 'tool-call' && toolName?.startsWith('agent-')) {
+          // Subagent / interpreter call lifecycle → one reasoning block per step.
+          // Subagents are exposed by Mastra as `agent-<id>` tools; the analyze_data
+          // code-interpreter is a plain tool on the master. Both should surface as
+          // a reasoning block so the user sees the step run and reads its outcome
+          // there instead of having it leak into the final answer.
+          const reasoningKey = this.reasoningToolKey(toolName);
+          if (type === 'tool-call' && reasoningKey) {
             seenAgentCall = true;
-            this.openReasoning(writer, toolName.slice('agent-'.length), openBlocks, recovery);
+            this.openReasoning(writer, reasoningKey, openBlocks, recovery);
             continue;
           }
-          if (type === 'tool-result' && toolName?.startsWith('agent-')) {
-            // Everything streamed up to and including this subagent was narration
+          if (type === 'tool-result' && reasoningKey) {
+            // Everything streamed up to and including this step was narration
             // (the master's own or the subagent's, both surface as text-delta).
             // Drop it so the buffer only holds text emitted AFTER the last
-            // subagent finishes — i.e. the master's genuine final answer.
+            // step finishes — i.e. the master's genuine final answer.
             masterFinalText = '';
-            const key = toolName.slice('agent-'.length);
+            const key = reasoningKey;
             const isError = Boolean(payload['isError']);
             const resultText = this.extractSubagentText(payload['result']);
             const display = formatReasoningStep({
@@ -596,30 +697,7 @@ export class ChatService {
 
       // Safety: close any reasoning block that opened but never got a result.
       // Finalize with a truthful outcome derived from whatever the blackboard holds.
-      for (const [key, id] of openBlocks) {
-        const display = formatReasoningStep({
-          stepName: key,
-          status: 'complete',
-          output: this.buildStepOutput(key, run),
-          recovery,
-        });
-        recovery = this.nextRecovery(recovery, resolveStepKey(key), display);
-        const metricsMd = this.lightragMetricsComment(key, run);
-        const persistMd =
-          renderReasoningMarkdown(display) +
-          this.retrievedContextBlock(key, run) +
-          this.generatedSqlBlock(key, run) +
-          metricsMd;
-        // Skip re-emitting the fence to the live UI when it was already streamed
-        // in (see closeReasoning); the persisted copy keeps it for reload.
-        const liveMd =
-          lightragStreamed && resolveStepKey(key) === 'retrieve_context'
-            ? renderReasoningMarkdown(display) + metricsMd
-            : persistMd;
-        writer.write({ type: 'reasoning-delta', id, delta: `\n\n${liveMd}` });
-        writer.write({ type: 'reasoning-end', id });
-        reasoningParts.push({ key, text: persistMd });
-      }
+      recovery = this.flushOpenReasoning(writer, openBlocks, reasoningParts, run, recovery, lightragStreamed);
 
       // Emit the SQL table + visualization from the blackboard. The data table
       // renders whenever there are rows; the chart spec is optional (a flat list
@@ -671,12 +749,70 @@ export class ChatService {
       }
       const message = err instanceof Error ? err.message : 'Agent error';
       this.logger.error({ threadId, err }, 'Agent stream error');
+      // Resolve any reasoning block that opened but never received its result so
+      // the run's failure surfaces IN the block (a truthful "couldn't …" outcome)
+      // instead of leaving it stuck on its active title with an empty body — the
+      // permanent empty spinner the UI would otherwise show for a mid-run error.
+      this.flushOpenReasoning(writer, openBlocks, reasoningParts, run, recovery, lightragStreamed, {
+        status: 'error',
+        error: message,
+      });
       writer.write({ type: 'error', errorText: message });
     } finally {
       // Tear down the per-run DuckDB scratch scope (drops analysis_dataset,
       // closes the connection) regardless of how the turn ended.
       await run.duckdb?.dispose().catch(() => {});
     }
+  }
+
+  /**
+   * Resolve every reasoning block that opened but never received a tool-result —
+   * the single place dangling blocks are closed. On the happy path this runs once
+   * after the stream loop; it ALSO runs from the catch/error path so a mid-run
+   * failure never leaves a block stuck on its active title with an empty body
+   * (which the UI renders as a permanent empty spinner). Pass `status: 'error'`
+   * when finalizing after a failure so each block reads as a truthful "couldn't …"
+   * outcome instead of a fabricated success. Returns the advanced recovery state.
+   */
+  private flushOpenReasoning(
+    writer: any,
+    openBlocks: Map<string, string>,
+    reasoningParts: Array<{ key: string; text: string }>,
+    run: AnalyticsRunContext,
+    recovery: RecoveryContext | null,
+    lightragStreamed: boolean,
+    opts?: { status?: 'complete' | 'error'; error?: string },
+  ): RecoveryContext | null {
+    const status = opts?.status ?? 'complete';
+    for (const [key, id] of openBlocks) {
+      const display = formatReasoningStep({
+        stepName: key,
+        status,
+        output: this.buildStepOutput(key, run),
+        error: opts?.error,
+        recovery,
+      });
+      recovery = this.nextRecovery(recovery, resolveStepKey(key), display);
+      const metricsMd = this.lightragMetricsComment(key, run);
+      const persistMd =
+        renderReasoningMarkdown(display) +
+        this.retrievedContextBlock(key, run) +
+        this.generatedSqlBlock(key, run) +
+        metricsMd;
+      // Skip re-emitting the fence to the live UI when it was already streamed
+      // in (see closeReasoning); the persisted copy keeps it for reload.
+      const liveMd =
+        lightragStreamed && resolveStepKey(key) === 'retrieve_context'
+          ? renderReasoningMarkdown(display) + metricsMd
+          : persistMd;
+      writer.write({ type: 'reasoning-delta', id, delta: `\n\n${liveMd}` });
+      writer.write({ type: 'reasoning-end', id });
+      reasoningParts.push({ key, text: persistMd });
+    }
+    // Cleared so a later call (e.g. the catch path after the happy path already
+    // ran) never re-emits a delta to an already-ended block.
+    openBlocks.clear();
+    return recovery;
   }
 
   /**
@@ -810,6 +946,19 @@ export class ChatService {
     return `\n\n<!--lightrag-timing:${JSON.stringify(metrics)}-->`;
   }
 
+  /**
+   * Map a stream tool name to the reasoning-block step key it should surface
+   * under, or null for internal tools (run_sql, run_query, …) that must not open
+   * a block. Mastra exposes registered subagents as `agent-<id>` tools; the
+   * analyze_data code-interpreter is a plain tool on the master, matched by name.
+   */
+  private reasoningToolKey(toolName: string | undefined): string | null {
+    if (!toolName) return null;
+    if (toolName.startsWith('agent-')) return toolName.slice('agent-'.length);
+    if (toolName === 'analyze_data') return 'analyze_data';
+    return null;
+  }
+
   /** Collect a step's exact, structured outcome metadata from the run blackboard. */
   private buildStepOutput(key: string, run: AnalyticsRunContext): ReasoningStepOutput {
     switch (key) {
@@ -826,6 +975,16 @@ export class ChatService {
           rowCount: run.rowCount,
           columnCount: run.columns.length,
         };
+      case 'analyze_dataset':
+        // Only report a result shape when a transform was actually applied;
+        // otherwise leave it empty so the block falls back to the narration.
+        return run.analysisApplied
+          ? { rowCount: run.rowCount, columnCount: run.columns.length }
+          : {};
+      case 'analyze_data':
+        // The code-interpreter tool publishes its final result onto the same
+        // blackboard before returning, so report the result shape it produced.
+        return { rowCount: run.rowCount, columnCount: run.columns.length };
       case 'generate_visualization':
         // vizChoice is set even when a table was chosen (no chart spec).
         return { componentType: run.spec?.componentType ?? run.vizChoice };
@@ -968,10 +1127,14 @@ export class ChatService {
       parts: assistantParts as MastraMessageContentV2['parts'],
       metadata: data.run
         ? {
-            workflow: 'analytics-network',
+            workflow: data.run.interpreterSource ? 'data-analysis' : 'analytics-network',
             // Persist the executed read-only SELECT (not raw data) so the rerun
             // card can re-run it against MariaDB and re-shape the chart on demand.
-            sql: data.run.sql,
+            // For a code-interpreter turn this is DuckDB SQL against a per-run
+            // scratch table, not a re-runnable MariaDB SELECT — omit it so the
+            // rerun card does not appear for these turns.
+            sql: data.run.interpreterSource ? undefined : data.run.sql,
+            interpreterSource: data.run.interpreterSource,
             vizPlan: data.run.vizPlan,
             columns: data.run.columns,
             rowCount: data.run.rowCount,

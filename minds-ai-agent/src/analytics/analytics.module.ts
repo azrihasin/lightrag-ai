@@ -1,6 +1,9 @@
 import { Module } from '@nestjs/common';
 import { AiMastraModule } from '../ai/mastra/ai-mastra.module';
 import { MapTilesModule } from '../map-tiles/map-tiles.module';
+import { FilesModule } from '../files/files.module';
+import { DataAnalysisAgentService } from '../ai/mastra/agents/data-analysis.agent';
+import { DataAnalysisTool } from '../ai/mastra/tools/data-analysis.tool';
 import { CoverageMapAgentService } from './agents/coverage-map.agent';
 import { ModelProvider } from '../chat/providers/model.provider';
 import { ContextAgentService } from './context-agent.service';
@@ -17,6 +20,7 @@ import { DatasetRerunService } from './plan/dataset-rerun.service';
 import { GenerateSqlAgentService } from './agents/generate-sql.agent';
 import { ValidateSqlAgentService } from './agents/validate-sql.agent';
 import { ExecuteSqlAgentService } from './agents/execute-sql.agent';
+import { AnalyzeDatasetAgentService } from './agents/analyze-dataset.agent';
 import { DatasetIngestService } from './profile/dataset-ingest.service';
 import { ResultProfilerService } from './profile/result-profiler.service';
 import { SafeInsightsService } from './profile/safe-insights.service';
@@ -25,7 +29,7 @@ import { VizJsonCompiler } from './viz/viz-json.compiler';
 import { VizJsonValidator } from './viz/viz-json.validator';
 
 @Module({
-  imports: [AiMastraModule, MapTilesModule],
+  imports: [AiMastraModule, MapTilesModule, FilesModule],
   providers: [
     ModelProvider,
     SchemaMetadataService,
@@ -33,6 +37,7 @@ import { VizJsonValidator } from './viz/viz-json.validator';
     GenerateSqlAgentService,
     ValidateSqlAgentService,
     ExecuteSqlAgentService,
+    AnalyzeDatasetAgentService,
     DatasetIngestService,
     ResultProfilerService,
     SafeInsightsService,
@@ -43,6 +48,8 @@ import { VizJsonValidator } from './viz/viz-json.validator';
     ContextAgentService,
     TextToVizWorkflow,
     AnalyticsWorkflowTool,
+    DataAnalysisAgentService,
+    DataAnalysisTool,
     // Multi-agent network subagents
     IntentAgentService,
     ContextAgentNetworkService,
