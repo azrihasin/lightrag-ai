@@ -1,0 +1,5 @@
+interface:
+  display_name: 'MINDS Context'
+  short_description: 'Pick the right MINDS visualization for a question'
+  brand_color: '#009BAF'
+  default_prompt: 'Use $minds-context to choose which MINDS chart, map, table, or card should present this data, and how to configure it.'

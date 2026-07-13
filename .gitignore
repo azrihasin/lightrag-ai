@@ -3,6 +3,8 @@
 !.env.example
 node_modules/
 dist/
+package-lock.json
+**/package-lock.json
 
 # Claude Code generated diff artifacts
 **/.claude/codediff.txt
